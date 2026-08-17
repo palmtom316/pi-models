@@ -8,16 +8,20 @@ export default function hubModels(pi: ExtensionAPI) {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (!/sk-|api[_-]?key|bearer/i.test(message)) ctx.ui.notify(message, "error");
-      else ctx.ui.notify("hub-models failed", "error");
+      else ctx.ui.notify("pi-hub failed", "error");
     }
   };
 
+  pi.registerCommand("pi-hub", {
+    description: "Add or manage models.json providers (70% overlay)",
+    handler,
+  });
   pi.registerCommand("hub-models", {
-    description: "Add a provider with one or more APIs to models.json",
+    description: "Alias for /pi-hub",
     handler,
   });
   pi.registerCommand("add-provider", {
-    description: "Alias for /hub-models",
+    description: "Alias for /pi-hub",
     handler,
   });
 }

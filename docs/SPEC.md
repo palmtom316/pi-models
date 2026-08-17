@@ -183,7 +183,11 @@ Provider 名：`^[A-Za-z][A-Za-z0-9_-]{0,31}$`。撞内置 id（`openai`、`anth
 
 ## 6. TUI 流程
 
-命令：`/hub-models`。别名 `/add-provider`。
+命令：`/pi-hub`。别名 `/hub-models`、`/add-provider`。
+
+窗口：所有对话框（菜单 / 单多选 / 输入 / 密码 / loader）都渲染在 **70% 的 pi-agent 窗口** overlay 内（`width`/`maxHeight` 均为 `"70%"`，`anchor: center`）。随终端 resize 动态重算高度（`floor(rows*0.7)`），配色全部走 pi-agent 的 theme token（`accent`/`muted`/`border`/`selectedBg` 等）。
+
+安装：`pi install npm:pi-hub-models`（发布后）或 `pi install git:github.com/palmtom316/pi-hub-models`。
 
 ```text
 /hub-models
