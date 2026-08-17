@@ -1,5 +1,5 @@
 {
-  "name": "pi-models",
+  "name": "@palmtom/pi-models",
   "version": "0.1.0",
   "description": "Pi TUI overlay: add a provider with multiple APIs to models.json",
   "keywords": [
@@ -39,5 +39,8 @@
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "^0.84.2",
     "@earendil-works/pi-tui": "^0.84.2"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

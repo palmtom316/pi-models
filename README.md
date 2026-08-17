@@ -3,9 +3,8 @@
 Pi TUI **overlay** wizard: add a relay / self-hosted gateway as **one provider with one or more APIs**. The overlay is sized to **70% of the pi-agent window** and resizes live with the terminal; it uses pi-agent's theme tokens for identical colors. Open it with `/pim` inside pi, or install it:
 
 ```sh
-pi install npm:pi-models
+pi install npm:@palmtom/pi-models
 pi install git:github.com/palmtom316/pi-models
-pi install npm:@scope/pi-models
 ```
 
 Each API lists models. Daily-driver caps (GPT-5.6 / Claude 5 / Grok / DeepSeek V4 / GLM-5 / Gemini 3.7 / Kimi K3) are built in; unknown ids fetch [models.dev](https://models.dev) official buckets. Writes `models.json`, then `/model` can switch.
