@@ -170,7 +170,7 @@ describe("resolveDrafts builtin-first", () => {
       "https://x/v1",
       ["qwen3.8-max"],
       {
-        cachePath: "/tmp/pi-hub-models-test-models-dev.json",
+        cachePath: "/tmp/pim-models-test-models-dev.json",
         force: true,
         fetchImpl: async () => {
           fetches += 1;

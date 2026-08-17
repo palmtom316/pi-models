@@ -7,7 +7,7 @@ function agentDir(): string {
   return join(homedir(), ".pi", "agent");
 }
 
-export function getHubAgentDir(): string {
+export function getPimAgentDir(): string {
   return agentDir();
 }
 
@@ -20,7 +20,7 @@ export function getModelsDevCachePath(): string {
 }
 
 export function getSidecarPath(): string {
-  return join(agentDir(), "hub-models.json");
+  return join(agentDir(), "pim-models.json");
 }
 
 export function backupName(now = new Date()): string {

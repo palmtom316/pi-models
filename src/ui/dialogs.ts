@@ -1,6 +1,6 @@
 import { Input, Key, matchesKey, SelectList, truncateToWidth, type SelectItem } from "@earendil-works/pi-tui";
-import { hubCustom, termRows, type OverlayCtx } from "./overlay.ts";
-import { listTheme, renderHubWindow, type ThemeLike } from "./window.ts";
+import { pimCustom, termRows, type OverlayCtx } from "./overlay.ts";
+import { listTheme, renderPimWindow, type ThemeLike } from "./window.ts";
 
 function visibleCount(termRowsCount: number): number {
   return Math.max(4, targetBody(termRowsCount));
@@ -22,7 +22,7 @@ export async function overlaySelect(
   subtitle?: string,
 ): Promise<string | undefined> {
   if (options.length === 0) return undefined;
-  return hubCustom<string | undefined>(ctx, (tui, theme, _kb, done) => {
+  return pimCustom<string | undefined>(ctx, (tui, theme, _kb, done) => {
     const items: SelectItem[] = options.map((value) => ({ value, label: value }));
     let rows = termRows(tui);
     let select = makeSelect(items, rows, theme);
@@ -44,7 +44,7 @@ export async function overlaySelect(
           }
           bind();
         }
-        return renderHubWindow({
+        return renderPimWindow({
           theme,
           termRows: next,
           width,
@@ -68,7 +68,7 @@ export async function overlayConfirm(
   title: string,
   message: string,
 ): Promise<boolean> {
-  return hubCustom<boolean>(ctx, (tui, theme, _kb, done) => {
+  return pimCustom<boolean>(ctx, (tui, theme, _kb, done) => {
     const items: SelectItem[] = [
       { value: "yes", label: "Yes" },
       { value: "no", label: "No" },
@@ -95,7 +95,7 @@ export async function overlayConfirm(
         }
         const inner = Math.max(1, width - 2);
         const note = message.split("\n").map((line) => theme.fg("muted", truncateToWidth(line, inner)));
-        return renderHubWindow({
+        return renderPimWindow({
           theme,
           termRows: next,
           width,
@@ -119,7 +119,7 @@ export async function overlayInput(
   placeholder?: string,
   opts: { secret?: boolean } = {},
 ): Promise<string | undefined> {
-  return hubCustom<string | undefined>(ctx, (tui, theme, _kb, done) => {
+  return pimCustom<string | undefined>(ctx, (tui, theme, _kb, done) => {
     const input = new Input();
     input.onSubmit = (value) => done(value);
     input.onEscape = () => done(undefined);
@@ -138,7 +138,7 @@ export async function overlayInput(
           ? [maskLine(theme, input.getValue(), raw[0] ?? "", inner)]
           : raw.map((line) => theme.fg("text", line));
         const hint = placeholder ? theme.fg("dim", placeholder) : "";
-        return renderHubWindow({
+        return renderPimWindow({
           theme,
           termRows: termRows(tui),
           width,
@@ -176,7 +176,7 @@ export async function overlayMultiSelect(
   title: string,
   items: MultiSelectItem[],
 ): Promise<string[] | undefined> {
-  return hubCustom<string[] | undefined>(ctx, (tui, theme, _kb, done) => {
+  return pimCustom<string[] | undefined>(ctx, (tui, theme, _kb, done) => {
     const checked = new Set(items.filter((i) => i.checked).map((i) => i.value));
     let filter = "";
     let cursor = 0;
@@ -213,7 +213,7 @@ export async function overlayMultiSelect(
         if (list.length > maxVisible) {
           body.push(theme.fg("dim", `${offset + 1}-${Math.min(offset + maxVisible, list.length)} / ${list.length}`));
         }
-        return renderHubWindow({
+        return renderPimWindow({
           theme,
           termRows: termRows(tui),
           width,

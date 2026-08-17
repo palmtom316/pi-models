@@ -1,7 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { runWizard } from "./wizard.ts";
 
-export default function hubModels(pi: ExtensionAPI) {
+export default function piModels(pi: ExtensionAPI) {
   const handler = async (_args: string, ctx: Parameters<typeof runWizard>[0]) => {
     try {
       await runWizard(ctx, pi);
@@ -15,16 +15,16 @@ export default function hubModels(pi: ExtensionAPI) {
     }
   };
 
-  pi.registerCommand("pi-hub", {
+  pi.registerCommand("pim", {
     description: "Add or manage models.json providers (70% overlay)",
     handler,
   });
-  pi.registerCommand("hub-models", {
-    description: "Alias for /pi-hub",
+  pi.registerCommand("pim-models", {
+    description: "Alias for /pim",
     handler,
   });
   pi.registerCommand("add-provider", {
-    description: "Alias for /pi-hub",
+    description: "Alias for /pim",
     handler,
   });
 }

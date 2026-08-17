@@ -218,7 +218,7 @@ describe("delete provider / models", () => {
 
 describe("writeProviderBackup", () => {
   it("writes a 0600 provider snapshot", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "hub-models-"));
+    const dir = await mkdtemp(join(tmpdir(), "pim-models-"));
     const prev = process.env.PI_CODING_AGENT_DIR;
     process.env.PI_CODING_AGENT_DIR = dir;
     const path = await writeProviderBackup(elyBefore, "ELY");
@@ -231,7 +231,7 @@ describe("writeProviderBackup", () => {
   });
 
   it("keeps legacy provider ids inside the backup directory", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "hub-models-"));
+    const dir = await mkdtemp(join(tmpdir(), "pim-models-"));
     const prev = process.env.PI_CODING_AGENT_DIR;
     process.env.PI_CODING_AGENT_DIR = dir;
     try {
@@ -248,7 +248,7 @@ describe("writeProviderBackup", () => {
 
 describe("writeModelsFile", () => {
   it("backs up and writes 0600", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "hub-models-"));
+    const dir = await mkdtemp(join(tmpdir(), "pim-models-"));
     const path = join(dir, "models.json");
     await writeFile(path, JSON.stringify(elyBefore));
     const { backupPath } = await writeModelsFile({ providers: { Z: { name: "Z", models: [] } } }, path);
@@ -262,7 +262,7 @@ describe("writeModelsFile", () => {
   });
 
   it("rolls back an existing file and removes a failed first write", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "hub-models-"));
+    const dir = await mkdtemp(join(tmpdir(), "pim-models-"));
     const path = join(dir, "models.json");
     await writeFile(path, JSON.stringify(elyBefore));
     const { backupPath } = await writeModelsFile({ providers: { Z: { apiKey: "x", models: [] } } }, path);
@@ -273,7 +273,7 @@ describe("writeModelsFile", () => {
   });
 
   it("serializes concurrent writes and removes its lock", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "hub-models-"));
+    const dir = await mkdtemp(join(tmpdir(), "pim-models-"));
     const path = join(dir, "models.json");
     await writeFile(path, JSON.stringify(elyBefore));
     await Promise.all([

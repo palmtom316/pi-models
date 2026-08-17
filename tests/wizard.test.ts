@@ -3,7 +3,7 @@ import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
-import type { HubUi } from "../src/ui/hub-ui.ts";
+import type { PimUi } from "../src/ui/pim-ui.ts";
 import type { ModelDraft, ModelsFile } from "../src/types.ts";
 import { draftsForApi, persist, runWizard } from "../src/wizard.ts";
 
@@ -30,7 +30,7 @@ describe("wizard boundaries", () => {
       select: async () => "skip (keep defaults)",
       confirm: async () => true,
       notify: () => undefined,
-    } as unknown as HubUi;
+    } as unknown as PimUi;
     const drafts = await draftsForApi(
       ui,
       { api: "openai-completions", baseUrl: "https://relay.example/v1", userAgent: true },
@@ -68,7 +68,7 @@ describe("wizard boundaries", () => {
       multiSelect: async () => [fuzzy.id],
       confirm: async (title: string) => title !== "Confirm fuzzy model match",
       notify: () => undefined,
-    } as unknown as HubUi;
+    } as unknown as PimUi;
 
     const drafts = await draftsForApi(
       ui,
@@ -80,7 +80,7 @@ describe("wizard boundaries", () => {
   });
 
   it("restores the previous file when pi rejects the new configuration", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "pi-hub-wizard-"));
+    const dir = await mkdtemp(join(tmpdir(), "pim-wizard-"));
     const previousDir = process.env.PI_CODING_AGENT_DIR;
     process.env.PI_CODING_AGENT_DIR = dir;
     try {
@@ -108,7 +108,7 @@ describe("wizard boundaries", () => {
       const ui = {
         confirm: async () => true,
         notify: () => undefined,
-      } as unknown as HubUi;
+      } as unknown as PimUi;
       await persist({
         mode: "tui",
         ui: { notify: () => undefined, custom: () => undefined },

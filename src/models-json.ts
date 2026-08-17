@@ -396,7 +396,7 @@ async function acquireWriteLock(path: string): Promise<() => Promise<void>> {
         if ((staleError as NodeJS.ErrnoException).code !== "ENOENT") throw staleError;
         continue;
       }
-      if (Date.now() >= deadline) throw new Error(`models.json is locked by another pi-hub process: ${lockPath}`);
+      if (Date.now() >= deadline) throw new Error(`models.json is locked by another pim process: ${lockPath}`);
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
   }

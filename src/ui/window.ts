@@ -7,20 +7,20 @@ export type ThemeLike = {
   bold: (text: string) => string;
 };
 
-export const HUB_OVERLAY_RATIO = 0.7;
-export const HUB_OVERLAY_MIN_WIDTH = 48;
-export const HUB_OVERLAY_MIN_HEIGHT = 12;
+export const PIM_OVERLAY_RATIO = 0.7;
+export const PIM_OVERLAY_MIN_WIDTH = 48;
+export const PIM_OVERLAY_MIN_HEIGHT = 12;
 
-export const HUB_OVERLAY_OPTIONS: OverlayOptions = {
+export const PIM_OVERLAY_OPTIONS: OverlayOptions = {
   width: "70%",
   maxHeight: "70%",
-  minWidth: HUB_OVERLAY_MIN_WIDTH,
+  minWidth: PIM_OVERLAY_MIN_WIDTH,
   anchor: "center",
 };
 
 export function targetOverlayHeight(termRows: number): number {
-  if (!Number.isFinite(termRows) || termRows <= 0) return HUB_OVERLAY_MIN_HEIGHT;
-  return Math.max(HUB_OVERLAY_MIN_HEIGHT, Math.floor(termRows * HUB_OVERLAY_RATIO));
+  if (!Number.isFinite(termRows) || termRows <= 0) return PIM_OVERLAY_MIN_HEIGHT;
+  return Math.max(PIM_OVERLAY_MIN_HEIGHT, Math.floor(termRows * PIM_OVERLAY_RATIO));
 }
 
 export function listTheme(theme: ThemeLike) {
@@ -43,7 +43,7 @@ function hline(width: number): string {
   return "─".repeat(Math.max(0, width));
 }
 
-export function renderHubWindow(opts: {
+export function renderPimWindow(opts: {
   theme: ThemeLike;
   termRows: number;
   width: number;

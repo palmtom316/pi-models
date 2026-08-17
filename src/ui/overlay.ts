@@ -1,5 +1,5 @@
 import { BorderedLoader } from "@earendil-works/pi-coding-agent";
-import { HUB_OVERLAY_OPTIONS, renderHubWindow, type ThemeLike } from "./window.ts";
+import { PIM_OVERLAY_OPTIONS, renderPimWindow, type ThemeLike } from "./window.ts";
 
 export type OverlayCtx = {
   ui: {
@@ -13,13 +13,13 @@ export type OverlayTui = {
   terminal?: { rows?: number; columns?: number };
 };
 
-export function hubCustom<T>(
+export function pimCustom<T>(
   ctx: OverlayCtx,
   factory: (tui: OverlayTui, theme: ThemeLike, kb: unknown, done: (value: T) => void) => unknown,
 ): Promise<T> {
   return ctx.ui.custom(factory, {
     overlay: true,
-    overlayOptions: HUB_OVERLAY_OPTIONS,
+    overlayOptions: PIM_OVERLAY_OPTIONS,
   });
 }
 
@@ -27,7 +27,7 @@ export function termRows(tui: OverlayTui): number {
   return tui.terminal?.rows ?? process.stdout.rows ?? 24;
 }
 
-export function wrapInHubWindow(
+export function wrapInPimWindow(
   tui: OverlayTui,
   theme: ThemeLike,
   title: string,
@@ -36,7 +36,7 @@ export function wrapInHubWindow(
   subtitle?: string,
 ): (width: number) => string[] {
   return (width: number) =>
-    renderHubWindow({
+    renderPimWindow({
       theme,
       termRows: termRows(tui),
       width,
@@ -53,7 +53,7 @@ export async function overlayLoader<T>(
   work: (signal: AbortSignal) => Promise<T>,
   fallback: T,
 ): Promise<T> {
-  return hubCustom(ctx, (tui, theme, _kb, done) => {
+  return pimCustom(ctx, (tui, theme, _kb, done) => {
     const loader = new BorderedLoader(tui as never, theme as never, title);
     loader.onAbort = () => done(fallback);
     work(loader.signal)
@@ -66,7 +66,7 @@ export async function overlayLoader<T>(
     return {
       render: (width: number) => {
         const inner = loader.render(Math.max(8, width - 2));
-        return renderHubWindow({
+        return renderPimWindow({
           theme,
           termRows: termRows(tui),
           width,

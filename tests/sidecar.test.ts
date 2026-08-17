@@ -7,8 +7,8 @@ import { readSidecar, writeSidecar } from "../src/sidecar.ts";
 
 describe("sidecar", () => {
   it("merges partial updates without dropping existing fields", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "pi-hub-sidecar-"));
-    const path = join(dir, "hub-models.json");
+    const dir = await mkdtemp(join(tmpdir(), "pim-sidecar-"));
+    const path = join(dir, "pim-models.json");
     await writeSidecar({
       lastProvider: "ELY",
       lastEndpoints: [{ provider: "ELY", api: "openai-completions", baseUrl: "https://relay.example/v1" }],

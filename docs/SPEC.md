@@ -1,4 +1,4 @@
-# pi-hub-models — Provider / 模型接入向导
+# pi-models — Provider / 模型接入向导
 
 ## 1. 目标
 
@@ -46,7 +46,7 @@
   - `models.json` → `{agentDir}/models.json`
   - 备份 → `{agentDir}/models.json.bak-YYYYMMDD-HHMMSS-mmm`
   - models.dev 缓存 → `{agentDir}/cache/models.dev.json`
-  - sidecar（无密钥）→ `{agentDir}/hub-models.json`
+  - sidecar（无密钥）→ `{agentDir}/pim-models.json`
 - 支持的 `api`（首版）：
 
   | 值 | 典型用途 | 默认目录 |
@@ -182,14 +182,14 @@ Provider 名：`^[A-Za-z][A-Za-z0-9_-]{0,31}$`。撞内置 id（`openai`、`anth
 
 ## 6. TUI 流程
 
-命令：`/pi-hub`。别名 `/hub-models`、`/add-provider`。
+命令：`/pim`。别名 `/pim-models`、`/add-provider`。
 
 窗口：所有对话框（菜单 / 单多选 / 输入 / 密码 / loader）都渲染在 **70% 的 pi-agent 窗口** overlay 内（`width`/`maxHeight` 均为 `"70%"`，`anchor: center`）。随终端 resize 动态重算高度（`floor(rows*0.7)`），配色全部走 pi-agent 的 theme token（`accent`/`muted`/`border`/`selectedBg` 等）。
 
-安装：`pi install npm:pi-hub-models`（发布后）或 `pi install git:github.com/palmtom316/pi-hub-models`。
+安装：`pi install npm:pi-models`（发布后）或 `pi install git:github.com/palmtom316/pi-models`。
 
 ```text
-/hub-models
+/pim-models
   1. 选动作
        新建 provider
        给已有 provider 加 API / 加模型
@@ -439,7 +439,7 @@ UI 必须标明不是 models.dev。数字抄最近官方家族，不是权威。
 ## 11. 包结构
 
 ```text
-pi-hub-models/
+pi-models/
   README.md
   docs/SPEC.md
   docs/REVIEW.md
@@ -472,7 +472,7 @@ pi-hub-models/
       official-snippet.json
 ```
 
-开发：`pi --extension /path/to/pi-hub-models` 或拷到 `~/.pi/agent/extensions/pi-hub-models/`。  
+开发：`pi --extension /path/to/pi-models` 或拷到 `~/.pi/agent/extensions/pi-models/`。  
 发布名注意 npm 占用（`pi-ccs` 已被占过）。
 
 ## 12. 与现有用户配置
@@ -516,7 +516,7 @@ pi-hub-models/
 1. `url.ts` / `fetch.ts` / `models-dev.ts` / `match.ts` + 官方夹具单测。
 2. `models-json.ts` + 单测：备份、0600、原子写、按 id 合并、替换 API 分组、冲突、compat 下沉、白名单。
 3. `catalog.ts`：多形状解析、规范化、UA、限长。
-4. `/hub-models` TUI：新建 + **同一向导里循环多 API**。
+4. `/pim-models` TUI：新建 + **同一向导里循环多 API**。
 5. 给已有 provider 加 API（含下沉）。
 6. 能力编辑 + reset + sidecar。
 7. 打成可 `pi --extension` 的包。

@@ -6,6 +6,7 @@ export interface Sidecar {
   cacheFetchedAt?: string;
   lastProvider?: string;
   lastEndpoints?: Array<{ provider: string; api: string; baseUrl: string }>;
+  lang?: string;
 }
 
 export async function readSidecar(path = getSidecarPath()): Promise<Sidecar> {
@@ -22,6 +23,7 @@ export async function writeSidecar(data: Sidecar, path = getSidecarPath()): Prom
     cacheFetchedAt: data.cacheFetchedAt ?? current.cacheFetchedAt,
     lastProvider: data.lastProvider ?? current.lastProvider,
     lastEndpoints: data.lastEndpoints ?? current.lastEndpoints,
+    lang: data.lang ?? current.lang,
   };
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, `${JSON.stringify(safe, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });

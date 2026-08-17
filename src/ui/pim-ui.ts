@@ -1,8 +1,10 @@
 import type { OverlayCtx } from "./overlay.ts";
 import { overlayLoader } from "./overlay.ts";
 import { overlayConfirm, overlayInput, overlayMultiSelect, overlaySelect, type MultiSelectItem } from "./dialogs.ts";
+import type { Lang, Strings } from "../i18n.ts";
+import { getLang, t } from "../i18n.ts";
 
-export type HubUi = OverlayCtx & {
+export type PimUi = OverlayCtx & {
   select: (title: string, options: string[], subtitle?: string) => Promise<string | undefined>;
   confirm: (title: string, message: string) => Promise<boolean>;
   input: (title: string, placeholder?: string) => Promise<string | undefined>;
@@ -12,7 +14,7 @@ export type HubUi = OverlayCtx & {
   notify: (message: string, type?: "info" | "warning" | "error") => void;
 };
 
-export function createHubUi(ctx: OverlayCtx): HubUi {
+export function createPimUi(ctx: OverlayCtx): PimUi {
   return {
     ...ctx,
     select: (title, options, subtitle) => overlaySelect(ctx, title, options, subtitle),

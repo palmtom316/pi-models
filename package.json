@@ -1,5 +1,5 @@
 {
-  "name": "pi-hub-models",
+  "name": "pi-models",
   "version": "0.1.0",
   "description": "Pi TUI overlay: add a provider with multiple APIs to models.json",
   "keywords": [
@@ -15,12 +15,12 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/palmtom316/pi-hub-models.git"
+    "url": "git+https://github.com/palmtom316/pi-models.git"
   },
   "bugs": {
-    "url": "https://github.com/palmtom316/pi-hub-models/issues"
+    "url": "https://github.com/palmtom316/pi-models/issues"
   },
-  "homepage": "https://github.com/palmtom316/pi-hub-models#readme",
+  "homepage": "https://github.com/palmtom316/pi-models#readme",
   "pi": {
     "extensions": [
       "./src/index.ts"

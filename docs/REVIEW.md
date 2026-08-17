@@ -1,4 +1,4 @@
-# pi-hub-models 规格审查
+# pi-models 规格审查
 
 - **日期：** 2026-08-17
 - **范围：** `docs/SPEC.md`（实现尚未开始）。对照 Pi 0.84.2 契约、本机 `~/.pi/agent/models.json`、models.dev 官方目录，以及同类项目实现路径。
@@ -270,7 +270,7 @@ SPEC 写「provider 级不写死，或只写最常用一条」。若新模型漏
 
 向导**不能**往 `models.json` 写 `_hub` / `source` / `matchedFrom` 这类元数据，否则 `refresh()` 整文件报 schema 错，所有 provider 一起消失。
 
-匹配质量、官方 id、缓存时间放到 sidecar：`~/.pi/agent/hub-models.json`（无密钥）。`models.json` 只出 Pi 认识的字段。
+匹配质量、官方 id、缓存时间放到 sidecar：`~/.pi/agent/pim-models.json`（无密钥）。`models.json` 只出 Pi 认识的字段。
 
 `cost`：新模型省略（Pi 默认全 0）。合并时**不得清掉**用户已经手写的 cost。
 
@@ -394,8 +394,8 @@ tests/fixtures/
   models.json-ely-before.json
 ```
 
-开发期：`~/.pi/agent/extensions/pi-hub-models/` 或 `pi --extension`。  
-发布名不要叫光秃的 `pi-hub-models` 除非确认 npm 没人占（`pi-ccs` 已被占过）。
+开发期：`~/.pi/agent/extensions/pi-models/` 或 `pi --extension`。  
+发布名不要叫光秃的 `pi-models` 除非确认 npm 没人占（`pi-ccs` 已被占过）。
 
 测试最低集（没有这些不要标完成）：
 
@@ -435,7 +435,7 @@ tests/fixtures/
 1. `fetch.ts` + `models-dev.ts` + `match.ts` + 官方夹具单测（含 F1/F3/F17）。
 2. `models-json.ts`：备份、0600、原子写、按 id 合并、白名单字段、冲突；ELY 夹具。
 3. `catalog.ts`：openai `/models` + URL 规范化。
-4. `/hub-models`：新建 / 合并已有，单条 `openai-completions`，过滤多选，skip 编辑，refresh。
+4. `/pim-models`：新建 / 合并已有，单条 `openai-completions`，过滤多选，skip 编辑，refresh。
 5. 打成可 `pi --extension` 的包。
 
 **v0.2**
