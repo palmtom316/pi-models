@@ -19,7 +19,7 @@ const VENDOR_PREFIXES = [
   "xai/",
 ];
 
-const SITE_SUFFIXES = ["-think", "-thinking", "-reasoner", ":thinking", ":reasoning"];
+const SITE_SUFFIXES = ["-think", "-thinking", ":thinking", ":reasoning"];
 
 export function normalizeForMatch(raw: string): string {
   let s = raw.trim().toLowerCase();
@@ -98,6 +98,19 @@ export function matchOfficial(remoteId: string, catalog: OfficialCatalog, opts: 
   const normalized = normalizeForMatch(remoteId);
   const all = collectOfficial(catalog);
   const source = opts.source;
+
+  const raw = remoteId.trim().toLowerCase();
+  const rawExact = all.find((c) => c.officialId.toLowerCase() === raw);
+  if (rawExact) {
+    return {
+      kind: "official",
+      bucket: rawExact.bucket,
+      officialId: rawExact.officialId,
+      official: rawExact.official,
+      score: 100,
+      source,
+    };
+  }
 
   const exact = all.find((c) => c.officialId.toLowerCase() === normalized);
   if (exact) {

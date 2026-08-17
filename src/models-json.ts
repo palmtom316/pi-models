@@ -1,7 +1,7 @@
-import { mkdir, readdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { mkdir, open, readdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { NODE_UA, PROVIDER_COMPAT } from "./defaults.ts";
-import { backupName, getBackupPath, getModelsJsonPath, getProviderBackupDir, getProviderBackupPath } from "./paths.ts";
+import { PROVIDER_COMPAT } from "./defaults.ts";
+import { backupName, getModelsJsonPath, getProviderBackupDir, getProviderBackupPath, providerBackupId } from "./paths.ts";
 import type { ModelDraft, ModelRecord, ModelsFile, ProviderRecord } from "./types.ts";
 import { isOpenAiApi } from "./types.ts";
 import { canonicalizeUrl, sameEndpoint } from "./url.ts";
@@ -45,7 +45,7 @@ export function emptyModelsFile(): ModelsFile {
 }
 
 export function parseModelsFile(text: string): ModelsFile {
-  const parsed = JSON.parse(text) as unknown;
+  const parsed = JSON.parse(stripJsonComments(text)) as unknown;
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error("models.json must be an object");
   }
@@ -54,6 +54,45 @@ export function parseModelsFile(text: string): ModelsFile {
     throw new Error("models.json.providers must be an object");
   }
   return parsed as ModelsFile;
+}
+
+function stripJsonComments(text: string): string {
+  let out = "";
+  let quote = false;
+  let escaped = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]!;
+    const next = text[i + 1];
+    if (quote) {
+      out += ch;
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') quote = false;
+      continue;
+    }
+    if (ch === '"') {
+      quote = true;
+      out += ch;
+      continue;
+    }
+    if (ch === "/" && next === "/") {
+      i += 2;
+      while (i < text.length && text[i] !== "\n") i++;
+      if (i < text.length) out += "\n";
+      continue;
+    }
+    if (ch === "/" && next === "*") {
+      i += 2;
+      while (i < text.length && !(text[i] === "*" && text[i + 1] === "/")) {
+        if (text[i] === "\n") out += "\n";
+        i++;
+      }
+      i++;
+      continue;
+    }
+    out += ch;
+  }
+  return out;
 }
 
 export async function readModelsFile(path = getModelsJsonPath()): Promise<ModelsFile> {
@@ -107,6 +146,7 @@ export function draftToRecord(draft: ModelDraft): ModelRecord {
   };
   if (draft.thinkingLevelMap) rec.thinkingLevelMap = draft.thinkingLevelMap;
   if (draft.headers) rec.headers = draft.headers;
+  if (draft.samplingParams) rec.samplingParams = draft.samplingParams;
   if (draft.compat && Object.keys(draft.compat).length) rec.compat = draft.compat;
   return rec;
 }
@@ -182,7 +222,7 @@ export function mergeProviderLevelDefaults(provider: ProviderRecord): ProviderRe
   const next: ProviderRecord = {
     ...provider,
     compat: { ...PROVIDER_COMPAT, ...provider.compat },
-    headers: { ...NODE_UA, ...provider.headers },
+    headers: provider.headers ? { ...provider.headers } : undefined,
   };
   return next;
 }
@@ -236,6 +276,7 @@ export function applyDrafts(file: ModelsFile, opts: MergeOptions): MergeResult {
 
   const skippedConflicts: string[] = [];
   const incomingIds = new Set<string>();
+  let added = 0;
   for (const draft of opts.drafts) {
     if (incomingIds.has(draft.id)) {
       skippedConflicts.push(draft.id);
@@ -253,6 +294,7 @@ export function applyDrafts(file: ModelsFile, opts: MergeOptions): MergeResult {
       }
     } else {
       models.push(rec);
+      added++;
     }
   }
 
@@ -278,7 +320,7 @@ export function applyDrafts(file: ModelsFile, opts: MergeOptions): MergeResult {
   };
   return {
     file: sanitizeFile(next),
-    added: opts.drafts.length,
+    added,
     replaced,
     skippedConflicts,
     sunkThinking,
@@ -307,29 +349,80 @@ export async function writeModelsFile(file: ModelsFile, path = getModelsJsonPath
   const clean = sanitizeFile(file);
   const json = `${JSON.stringify(clean, null, 2)}\n`;
   await mkdir(dirname(path), { recursive: true });
-
-  let backupPath: string | undefined;
+  const release = await acquireWriteLock(path);
   try {
-    const current = await readFile(path);
-    backupPath = getBackupPath();
-    await writeFile(backupPath, current, { mode: FILE_MODE });
-  } catch (error) {
-    const err = error as NodeJS.ErrnoException;
-    if (err.code !== "ENOENT") throw error;
-  }
+    let backupPath: string | undefined;
+    try {
+      const current = await readFile(path);
+      backupPath = join(dirname(path), backupName());
+      await writeFile(backupPath, current, { mode: FILE_MODE });
+    } catch (error) {
+      const err = error as NodeJS.ErrnoException;
+      if (err.code !== "ENOENT") throw error;
+    }
 
-  const tmp = `${path}.tmp-${process.pid}`;
-  await writeFile(tmp, json, { encoding: "utf8", mode: FILE_MODE });
-  await rename(tmp, path);
-  await rotateBackups(dirname(path));
-  return { backupPath };
+    const tmp = `${path}.tmp-${process.pid}`;
+    try {
+      await writeFile(tmp, json, { encoding: "utf8", mode: FILE_MODE });
+      await rename(tmp, path);
+    } catch (error) {
+      try { await unlink(tmp); } catch { /* best effort */ }
+      throw error;
+    }
+    await rotateBackups(dirname(path));
+    return { backupPath };
+  } finally {
+    await release();
+  }
 }
 
-export async function rollbackModelsFile(backupPath: string, path = getModelsJsonPath()): Promise<void> {
-  const body = await readFile(backupPath);
-  const tmp = `${path}.tmp-rollback-${process.pid}`;
-  await writeFile(tmp, body, { mode: FILE_MODE });
-  await rename(tmp, path);
+async function acquireWriteLock(path: string): Promise<() => Promise<void>> {
+  const lockPath = `${path}.lock`;
+  const deadline = Date.now() + 5_000;
+  while (true) {
+    try {
+      const handle = await open(lockPath, "wx", FILE_MODE);
+      await handle.close();
+      return async () => { try { await unlink(lockPath); } catch { /* best effort */ } };
+    } catch (error) {
+      const err = error as NodeJS.ErrnoException;
+      if (err.code !== "EEXIST") throw error;
+      try {
+        if (Date.now() - (await stat(lockPath)).mtimeMs > 30_000) {
+          await unlink(lockPath);
+          continue;
+        }
+      } catch (staleError) {
+        if ((staleError as NodeJS.ErrnoException).code !== "ENOENT") throw staleError;
+        continue;
+      }
+      if (Date.now() >= deadline) throw new Error(`models.json is locked by another pi-hub process: ${lockPath}`);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  }
+}
+
+export async function rollbackModelsFile(backupPath?: string, path = getModelsJsonPath()): Promise<void> {
+  const release = await acquireWriteLock(path);
+  try {
+    if (!backupPath) {
+      try { await unlink(path); } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      }
+      return;
+    }
+    const body = await readFile(backupPath);
+    const tmp = `${path}.tmp-rollback-${process.pid}`;
+    try {
+      await writeFile(tmp, body, { mode: FILE_MODE });
+      await rename(tmp, path);
+    } catch (error) {
+      try { await unlink(tmp); } catch { /* best effort */ }
+      throw error;
+    }
+  } finally {
+    await release();
+  }
 }
 
 export function providerNameOk(name: string): boolean {
@@ -412,7 +505,7 @@ export async function writeProviderBackup(file: ModelsFile, providerId: string):
   const body = `${JSON.stringify({ providers: { [providerId]: sanitizeProvider(provider) } }, null, 2)}\n`;
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, body, { encoding: "utf8", mode: FILE_MODE });
-  await rotateNamedBackups(getProviderBackupDir(), `${providerId}-`);
+  await rotateNamedBackups(getProviderBackupDir(), `${providerBackupId(providerId)}-`);
   return path;
 }
 

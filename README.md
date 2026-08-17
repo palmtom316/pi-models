@@ -4,7 +4,7 @@ Pi TUI **overlay** wizard: add a relay / self-hosted gateway as **one provider w
 
 ```sh
 pi install npm:pi-hub-models
-git:github.com/palmtom316/pi-hub-models
+pi install git:github.com/palmtom316/pi-hub-models
 pi install npm:@scope/pi-hub-models
 ```
 

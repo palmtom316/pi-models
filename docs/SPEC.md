@@ -44,7 +44,7 @@
 - 官方接口：`registerCommand`、`setModel`、`ctx.modelRegistry.refresh()` / `getError()`、`ctx.ui.*`。`registerProvider` 不用于主路径。`ctx.reload()` 仅开发热加载。
 - 路径用 `getAgentDir()`（尊重 `PI_CODING_AGENT_DIR`），不要写死 `~/.pi/agent`。
   - `models.json` → `{agentDir}/models.json`
-  - 备份 → `{agentDir}/models.json.bak-YYYYMMDD-HHMMSS`
+  - 备份 → `{agentDir}/models.json.bak-YYYYMMDD-HHMMSS-mmm`
   - models.dev 缓存 → `{agentDir}/cache/models.dev.json`
   - sidecar（无密钥）→ `{agentDir}/hub-models.json`
 - 支持的 `api`（首版）：
@@ -71,7 +71,7 @@ Provider
   apis[]        至少一条
     api         Pi api 类型
     baseUrl     该协议端点（按 §7.2 规范化后写入）
-    headers     可选；默认 User-Agent: node
+    headers     模型级可选；默认 User-Agent: node，关闭 UA 时不写
     label       给人看的名字
 ```
 
@@ -94,7 +94,6 @@ Provider 名：`^[A-Za-z][A-Za-z0-9_-]{0,31}$`。撞内置 id（`openai`、`anth
         "supportsReasoningEffort": true,
         "supportsLongCacheRetention": false
       },
-      "headers": { "User-Agent": "node" },
       "models": [
         {
           "id": "deepseek-v4-flash-0731",
@@ -217,7 +216,7 @@ Provider 名：`^[A-Za-z][A-Za-z0-9_-]{0,31}$`。撞内置 id（`openai`、`anth
        不可改 id / api / baseUrl / cost
        reset = 再按写入 id 匹配内置（没有再启发式），不动 id / api / baseUrl / 已有 cost
   4b. 管理已有 provider
-       备份该 provider → `{agentDir}/backups/{name}-YYYYMMDD-HHMMSS.json`（0600，最近 10 份）
+       备份该 provider → `{agentDir}/backups/{safe-name}-YYYYMMDD-HHMMSS-mmm.json`（0600，最近 10 份）
        删除整个 provider（先备份）
        多选删除该 provider 下的模型
        多选后逐个改能力
@@ -238,10 +237,10 @@ Provider 名：`^[A-Za-z][A-Za-z0-9_-]{0,31}$`。撞内置 id（`openai`、`anth
 
 ### 7.1 请求
 
-- `Authorization: Bearer <key>`（Anthropic 原生另加 `x-api-key` 与 `anthropic-version: 2023-06-01`）。
+- 默认 `Authorization: Bearer <key>`；Anthropic 原生另加 `x-api-key` 与 `anthropic-version: 2023-06-01`；Google 原生改用 `x-goog-api-key`，不发 Bearer。
 - 默认 `User-Agent: node`。
 - 超时（建议 20s）+ `AbortSignal`。
-- 拒 URL userinfo；剥 query / hash。
+- 仅允许 HTTPS；HTTP 只允许 localhost / `127.0.0.1` / `::1`。拒 URL userinfo；剥 query / hash。
 - 不跟随跨 origin 3xx；同 origin 最多跟 1 次。
 - body 边读边截：目录 2MB，models.dev 8MB。
 - 非 2xx：status + body 截断到 200 字。HTML 首页提示补 `/v1`，**不自动改 URL 重试写盘**。
@@ -403,9 +402,10 @@ UI 必须标明不是 models.dev。数字抄最近官方家族，不是权威。
 | `supportsLongCacheRetention: false` | provider | New API 拒 `prompt_cache_key` |
 | `supportsDeveloperRole: false` | provider | 常不认 `developer` |
 | `supportsReasoningEffort: true` | provider | 模型 map 再裁档 |
-| `headers["User-Agent"]="node"` | provider + 模型 | WAF 拦 `OpenAI/JS` |
+| `headers["User-Agent"]="node"` | **模型** | WAF 拦 `OpenAI/JS`；用户关闭时 provider 和模型均不新增 UA，已有 provider header 保留 |
 | DeepSeek + `interleaved.field==="reasoning_content"` | **模型** | `thinkingFormat:"deepseek"` + `requiresReasoningContentOnAssistantMessages` |
 | `zhipuai` / `zai` / glm 家族 + interleaved | **模型** | `thinkingFormat:"zai"`，不要一律 deepseek |
+| `moonshotai` / Kimi + OpenAI 协议 | **模型** | `thinkingFormat:"openai"` + `requiresReasoningContentOnAssistantMessages` |
 | `anthropic-messages` 且命中 Claude 5 家族 | **模型** | `forceAdaptiveThinking: true` |
 | `anthropic-messages` / `google-generative-ai` | **模型** | 禁止套 deepseek/zai thinkingFormat |
 
@@ -425,10 +425,10 @@ UI 必须标明不是 models.dev。数字抄最近官方家族，不是权威。
 
 ## 10. 运行时生效
 
-1. 备份 `models.json` → `models.json.bak-YYYYMMDD-HHMMSS`（`0o600`）。只留最近 10 份。
+1. 在目标文件同目录备份 `models.json` → `models.json.bak-YYYYMMDD-HHMMSS-mmm`（`0o600`）。只留最近 10 份。
 2. 同目录 tmp + `rename` 原子写，文件 `0o600`。
 3. `await ctx.modelRegistry.refresh()`。
-4. `ctx.modelRegistry.getError()` 非空：展示 + 备份路径，提供回滚，不 `setModel`。
+4. `ctx.modelRegistry.getError()` 非空：展示 + 备份路径，提供回滚；确认后恢复旧文件（首次创建则删除）并再次 `refresh()`，不 `setModel`。
 5. 新模型出现在 `/model`；选中后走该模型 `api` + `baseUrl`。
 6. 重启仍在（因为写了文件）。
 

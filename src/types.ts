@@ -155,6 +155,7 @@ export interface ModelDraft {
   contextWindow: number;
   maxTokens: number;
   headers?: Record<string, string>;
+  samplingParams?: Record<string, unknown>;
   compat?: ModelCompat;
   match: MatchHit;
   /** User chose to replace an existing same-id model. */

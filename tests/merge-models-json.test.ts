@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
-import { applyDrafts, clashesBuiltin, deleteModels, deleteProvider, providerNameOk, replaceModelRecords, sanitizeFile, sinkThinkingCompat, writeModelsFile, writeProviderBackup } from "../src/models-json.ts";
+import { applyDrafts, clashesBuiltin, deleteModels, deleteProvider, parseModelsFile, providerNameOk, replaceModelRecords, rollbackModelsFile, sanitizeFile, sinkThinkingCompat, writeModelsFile, writeProviderBackup } from "../src/models-json.ts";
 import type { ModelDraft, ModelsFile } from "../src/types.ts";
 
 function draft(partial: Partial<ModelDraft> & Pick<ModelDraft, "id" | "api" | "baseUrl">): ModelDraft {
@@ -83,6 +83,7 @@ describe("applyDrafts multi-api", () => {
     assert.deepEqual(result.skippedConflicts, ["deepseek-v4-flash-0731"]);
     const kept = result.file.providers.ELY.models?.[0];
     assert.notEqual(kept?.api, "anthropic-messages");
+    assert.equal(result.added, 0);
   });
 
   it("replaceExisting overwrites the id but keeps cost", () => {
@@ -102,6 +103,18 @@ describe("applyDrafts multi-api", () => {
     const kept = result.file.providers.ELY.models?.[0];
     assert.equal(kept?.contextWindow, 12);
     assert.equal(kept?.cost?.input, 0.14);
+    assert.equal(result.added, 0);
+  });
+
+  it("does not add User-Agent when it is disabled", () => {
+    const result = applyDrafts({ providers: {} }, {
+      providerId: "NO_UA",
+      mode: "merge",
+      drafts: [draft({ id: "m", api: "openai-completions", baseUrl: "https://relay.example/v1" })],
+    });
+    assert.equal(result.file.providers.NO_UA.headers, undefined);
+    assert.equal(result.file.providers.NO_UA.models?.[0]?.headers, undefined);
+    assert.equal(result.added, 1);
   });
 
   it("strips unknown fields", () => {
@@ -114,6 +127,18 @@ describe("applyDrafts multi-api", () => {
       },
     });
     assert.equal("_hub" in (dirty.providers.X.models?.[0] ?? {}), false);
+  });
+});
+
+describe("models.json parsing", () => {
+  it("accepts comments without stripping comment-like text in strings", () => {
+    const parsed = parseModelsFile(`{
+      // pi accepts JSON comments
+      "providers": {
+        "X": { "baseUrl": "https://x.test/v1//models", "models": [] }
+      }
+    }`);
+    assert.equal(parsed.providers.X.baseUrl, "https://x.test/v1//models");
   });
 });
 
@@ -175,6 +200,20 @@ describe("delete provider / models", () => {
     assert.equal(model?.contextWindow, 999);
     assert.equal(model?.cost?.input, 0.14);
   });
+
+  it("keeps samplingParams while editing capabilities", () => {
+    const before: ModelsFile = {
+      providers: {
+        X: {
+          models: [{ id: "m", samplingParams: { temperature: 0.2 }, contextWindow: 100 }],
+        },
+      },
+    };
+    const next = replaceModelRecords(before, "X", [
+      { id: "m", contextWindow: 200, samplingParams: { temperature: 0.2 } },
+    ]);
+    assert.deepEqual(next.providers.X.models?.[0]?.samplingParams, { temperature: 0.2 });
+  });
 });
 
 describe("writeProviderBackup", () => {
@@ -190,6 +229,21 @@ describe("writeProviderBackup", () => {
     if (prev === undefined) delete process.env.PI_CODING_AGENT_DIR;
     else process.env.PI_CODING_AGENT_DIR = prev;
   });
+
+  it("keeps legacy provider ids inside the backup directory", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hub-models-"));
+    const prev = process.env.PI_CODING_AGENT_DIR;
+    process.env.PI_CODING_AGENT_DIR = dir;
+    try {
+      const file: ModelsFile = { providers: { "../../outside": { models: [] } } };
+      const path = await writeProviderBackup(file, "../../outside");
+      assert.equal(path.startsWith(join(dir, "backups")), true);
+      assert.equal(path.includes(".."), false);
+    } finally {
+      if (prev === undefined) delete process.env.PI_CODING_AGENT_DIR;
+      else process.env.PI_CODING_AGENT_DIR = prev;
+    }
+  });
 });
 
 describe("writeModelsFile", () => {
@@ -199,10 +253,36 @@ describe("writeModelsFile", () => {
     await writeFile(path, JSON.stringify(elyBefore));
     const { backupPath } = await writeModelsFile({ providers: { Z: { name: "Z", models: [] } } }, path);
     assert.ok(backupPath);
+    assert.equal(backupPath?.startsWith(dir), true);
     const written = JSON.parse(await readFile(path, "utf8"));
     assert.ok(written.providers.Z);
     const { stat } = await import("node:fs/promises");
     const mode = (await stat(path)).mode & 0o777;
     assert.equal(mode, 0o600);
+  });
+
+  it("rolls back an existing file and removes a failed first write", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hub-models-"));
+    const path = join(dir, "models.json");
+    await writeFile(path, JSON.stringify(elyBefore));
+    const { backupPath } = await writeModelsFile({ providers: { Z: { apiKey: "x", models: [] } } }, path);
+    await rollbackModelsFile(backupPath, path);
+    assert.ok(JSON.parse(await readFile(path, "utf8")).providers.ELY);
+    await rollbackModelsFile(undefined, path);
+    await assert.rejects(access(path));
+  });
+
+  it("serializes concurrent writes and removes its lock", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hub-models-"));
+    const path = join(dir, "models.json");
+    await writeFile(path, JSON.stringify(elyBefore));
+    await Promise.all([
+      writeModelsFile({ providers: { A: { models: [] } } }, path),
+      writeModelsFile({ providers: { B: { models: [] } } }, path),
+    ]);
+    const written = JSON.parse(await readFile(path, "utf8")) as ModelsFile;
+    assert.equal(Object.keys(written.providers).length, 1);
+    assert.equal(Boolean(written.providers.A || written.providers.B), true);
+    await assert.rejects(access(`${path}.lock`));
   });
 });

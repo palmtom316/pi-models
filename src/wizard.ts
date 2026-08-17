@@ -8,6 +8,7 @@ import {
   listExistingProviders,
   providerNameOk,
   readModelsFile,
+  rollbackModelsFile,
   writeModelsFile,
 } from "./models-json.ts";
 import { runManageMenu } from "./manage.ts";
@@ -72,7 +73,7 @@ async function collectApis(ui: HubUi): Promise<Array<{ api: PiApi; baseUrl: stri
   return apis.length ? apis : undefined;
 }
 
-async function draftsForApi(
+export async function draftsForApi(
   ui: HubUi,
   spec: { api: PiApi; baseUrl: string; userAgent: boolean },
   apiKey: string,
@@ -91,23 +92,26 @@ async function draftsForApi(
     if (catalog.html && catalog.suggestV1) {
       ui.notify(`Response looked like HTML. Try ${catalog.suggestV1}`, "warning");
     }
+  }
+
+  if (items.length === 0) {
+    if (catalog.ok) ui.notify("No models returned by this API", "warning");
     const typed = await ui.input("Model ids (comma-separated), or empty to skip", "claude-opus-5, gpt-5.6-sol");
     if (!typed) return [];
     items = parseManualIds(typed).map((id) => ({ id }));
   }
 
-  if (items.length === 0) {
-    ui.notify("No models on this API", "warning");
-    return [];
-  }
-
   const preview = resolveDrafts(items, spec.api, spec.baseUrl, { userAgent: spec.userAgent });
+  const orderedDrafts = [...preview.drafts].sort((a, b) => {
+    const rank = (kind: ModelDraft["match"]["kind"]) => kind === "official" ? 0 : kind === "fuzzy" ? 1 : 2;
+    return rank(a.match.kind) - rank(b.match.kind) || a.id.localeCompare(b.id);
+  });
   const selected = await ui.multiSelect(
     `${spec.api} @ ${spec.baseUrl}`,
-    preview.drafts.map((d) => ({
+    orderedDrafts.map((d) => ({
       value: d.id,
       label: d.id,
-      description: `${matchLabel(d.match)}  ${d.contextWindow}/${d.maxTokens}`,
+      description: `${existingIds.has(d.id) ? "! conflict  " : ""}${matchLabel(d.match)}  ${d.contextWindow}/${d.maxTokens}`,
       hiddenByDefault: isNonChatModality(d.id, d.match.official),
       checked: d.match.kind === "official" && !existingIds.has(d.id),
     })),
@@ -129,10 +133,18 @@ async function draftsForApi(
     );
     drafts = enriched.drafts.filter((d) => selected.includes(d.id));
     if (enriched.remote?.warning) ui.notify(enriched.remote.warning, "warning");
+    else if (enriched.remote?.fetchedAt) ui.notify(`models.dev catalog: ${enriched.remote.fetchedAt}`, "info");
   }
 
   const out: ModelDraft[] = [];
   for (const draft of drafts) {
+    if (draft.match.kind === "fuzzy") {
+      const accepted = await ui.confirm(
+        "Confirm fuzzy model match",
+        `${draft.id}\n→ ${draft.match.bucket}/${draft.match.officialId}\nUse this model's capabilities?`,
+      );
+      if (!accepted) continue;
+    }
     if (!existingIds.has(draft.id)) {
       out.push(draft);
       continue;
@@ -147,7 +159,7 @@ async function draftsForApi(
   return maybeEditDrafts(ui, out);
 }
 
-async function persist(
+export async function persist(
   ctx: CmdCtx,
   ui: HubUi,
   file: ModelsFile,
@@ -178,10 +190,21 @@ async function persist(
   const err = ctx.modelRegistry.getError();
   if (err) {
     ui.notify(`refresh failed: ${err}${backupPath ? `\nbackup: ${backupPath}` : ""}`, "error");
+    const restore = await ui.confirm(
+      "Rollback models.json?",
+      backupPath ? `Restore ${backupPath}?` : "Remove the newly created models.json?",
+    );
+    if (restore) {
+      await rollbackModelsFile(backupPath);
+      await ctx.modelRegistry.refresh();
+      const rollbackError = ctx.modelRegistry.getError();
+      ui.notify(rollbackError ? `Rollback refresh failed: ${rollbackError}` : "models.json rolled back", rollbackError ? "error" : "info");
+    }
     return;
   }
   const apis = [...new Set(drafts.map((d) => d.api))].join(", ");
-  ui.notify(`Wrote ${drafts.length} model(s) on ${providerId} (${apis})`, "info");
+  const conflictNote = merged.skippedConflicts.length ? `; skipped ${merged.skippedConflicts.length} conflict(s)` : "";
+  ui.notify(`Added ${merged.added} model(s), replaced ${merged.replaced} on ${providerId} (${apis})${conflictNote}`, "info");
   if (merged.sunkThinking) {
     ui.notify("Moved provider thinkingFormat onto existing OpenAI models before adding native API", "info");
   }
@@ -273,7 +296,7 @@ async function wizardRefreshCache(ui: HubUi): Promise<void> {
     "Refreshing models.dev…",
     async (signal) => {
       const remote = await loadOfficialCatalog({ force: true, signal });
-      return remote.warning ?? `cached ${Object.keys(remote.catalog).length} official buckets`;
+      return remote.warning ?? `cached ${Object.keys(remote.catalog).length} official buckets at ${remote.fetchedAt ?? "unknown time"}`;
     },
     "cancelled",
   );

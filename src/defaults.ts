@@ -78,8 +78,11 @@ export function modelCompatFromMatch(api: PiApi, hit: MatchHit): ModelCompat | u
 
   if (!isOpenAiApi(api)) {
     if (api === "anthropic-messages" && (bucket === "anthropic" || /claude/.test(id))) {
-      const looksV5 = /claude-(opus|sonnet|haiku|fable|mythos)-5/.test(id) || /claude-.*-5/.test(id);
-      if (looksV5 || family.includes("claude")) {
+      const version = id.match(/^claude-[a-z0-9]+-(\d+)(?:-(\d+))?(?:-|$)/);
+      const major = Number(version?.[1] ?? 0);
+      const minor = Number(version?.[2] ?? 0);
+      const looksAdaptive = major >= 5 || (major === 4 && minor >= 6);
+      if (looksAdaptive) {
         return { forceAdaptiveThinking: true };
       }
     }
@@ -95,7 +98,14 @@ export function modelCompatFromMatch(api: PiApi, hit: MatchHit): ModelCompat | u
     }
   }
 
-  if (field === "reasoning_content" || bucket === "deepseek" || bucket === "moonshotai") {
+  if (bucket === "moonshotai") {
+    return {
+      thinkingFormat: "openai",
+      requiresReasoningContentOnAssistantMessages: true,
+    };
+  }
+
+  if (field === "reasoning_content" || bucket === "deepseek") {
     return {
       thinkingFormat: "deepseek",
       requiresReasoningContentOnAssistantMessages: true,

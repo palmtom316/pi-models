@@ -6,9 +6,12 @@ export default function hubModels(pi: ExtensionAPI) {
     try {
       await runWizard(ctx, pi);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (!/sk-|api[_-]?key|bearer/i.test(message)) ctx.ui.notify(message, "error");
-      else ctx.ui.notify("pi-hub failed", "error");
+      const raw = error instanceof Error ? error.message : String(error);
+      const message = raw
+        .replace(/authorization\s*[:=]\s*bearer\s+\S+/gi, "Authorization: [redacted]")
+        .replace(/(["']?api[_-]?key["']?\s*[:=]\s*["']?)[^\s,"'}]+/gi, "$1[redacted]")
+        .replace(/\bsk-[A-Za-z0-9_-]+\b/g, "[redacted]");
+      ctx.ui.notify(message, "error");
     }
   };
 

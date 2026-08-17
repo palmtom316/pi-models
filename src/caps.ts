@@ -42,6 +42,7 @@ export function recordToDraft(model: ModelRecord, provider: ProviderRecord): Mod
     contextWindow: model.contextWindow ?? 128_000,
     maxTokens: model.maxTokens ?? 16_384,
     headers: model.headers,
+    samplingParams: model.samplingParams,
     compat: model.compat,
     match: matchBuiltin(model.id),
   };

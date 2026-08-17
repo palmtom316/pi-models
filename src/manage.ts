@@ -5,6 +5,7 @@ import {
   listExistingProviders,
   readModelsFile,
   replaceModelRecords,
+  rollbackModelsFile,
   writeModelsFile,
   writeProviderBackup,
 } from "./models-json.ts";
@@ -26,6 +27,16 @@ async function persistFile(ui: HubUi, ctx: RegistryCtx, file: ModelsFile, messag
   const err = ctx.modelRegistry.getError();
   if (err) {
     ui.notify(`refresh failed: ${err}${backupPath ? `\nmodels.json backup: ${backupPath}` : ""}`, "error");
+    const restore = await ui.confirm(
+      "Rollback models.json?",
+      backupPath ? `Restore ${backupPath}?` : "Remove the newly created models.json?",
+    );
+    if (restore) {
+      await rollbackModelsFile(backupPath);
+      await ctx.modelRegistry.refresh();
+      const rollbackError = ctx.modelRegistry.getError();
+      ui.notify(rollbackError ? `Rollback refresh failed: ${rollbackError}` : "models.json rolled back", rollbackError ? "error" : "info");
+    }
     return;
   }
   ui.notify(message, "info");

@@ -10,12 +10,23 @@ export function stripUserinfoAndFrag(raw: string): string {
   } catch {
     throw new Error(`invalid url: ${trimmed.slice(0, 80)}`);
   }
+  if (u.protocol !== "https:" && u.protocol !== "http:") {
+    throw new Error("url must use https (http is allowed only for localhost)");
+  }
+  if (u.protocol === "http:" && !isLoopbackHost(u.hostname)) {
+    throw new Error("insecure http URL; use https or a localhost endpoint");
+  }
   if (u.username || u.password) {
     throw new Error("url must not contain credentials");
   }
   u.hash = "";
   u.search = "";
   return u.toString();
+}
+
+function isLoopbackHost(host: string): boolean {
+  const lower = host.toLowerCase();
+  return lower === "localhost" || lower === "127.0.0.1" || lower === "::1" || lower === "[::1]";
 }
 
 export function trimSlash(url: string): string {

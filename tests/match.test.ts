@@ -27,6 +27,12 @@ describe("matchOfficial", () => {
     assert.equal(hit.officialId, "deepseek-v4-flash");
   });
 
+  it("keeps the semantic -reasoner suffix for exact official ids", () => {
+    const hit = matchOfficial("deepseek-reasoner", catalog);
+    assert.equal(hit.kind, "official");
+    assert.equal(hit.officialId, "deepseek-reasoner");
+  });
+
   it("does not treat reseller 0731 as an official id", () => {
     assert.equal(catalog.deepseek?.models["deepseek-v4-flash-0731"], undefined);
     assert.ok(snippet.openrouter?.models["deepseek/deepseek-v4-flash-0731"]);

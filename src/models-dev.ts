@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { boundedFetch } from "./fetch.ts";
 import { getModelsDevCachePath } from "./paths.ts";
+import { writeSidecar } from "./sidecar.ts";
 import type { OfficialCatalog, OfficialModel, OfficialProvider } from "./types.ts";
 import { OFFICIAL_BUCKETS, isResellerBucket } from "./types.ts";
 
@@ -120,6 +121,7 @@ export async function loadOfficialCatalog(opts: LoadOfficialOptions = {}): Promi
     if (res.status === 304 && cached) {
       const next = { ...cached, fetchedAt: new Date().toISOString() };
       await writeCache(path, next);
+      if (!opts.cachePath) await writeSidecar({ cacheFetchedAt: next.fetchedAt });
       return { catalog: cached.official, fetchedAt: next.fetchedAt, fromCache: true, stale: false };
     }
     if (!res.ok || res.timedOut) {
@@ -143,6 +145,7 @@ export async function loadOfficialCatalog(opts: LoadOfficialOptions = {}): Promi
       official,
     };
     await writeCache(path, next);
+    if (!opts.cachePath) await writeSidecar({ cacheFetchedAt: next.fetchedAt });
     return { catalog: official, fetchedAt: next.fetchedAt, fromCache: false, stale: false };
   } catch (error) {
     if (cached) {

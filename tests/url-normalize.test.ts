@@ -7,6 +7,12 @@ describe("url", () => {
     assert.throws(() => stripUserinfoAndFrag("https://user:pass@host/v1"), /credentials/);
   });
 
+  it("rejects non-HTTPS remote URLs and non-network schemes", () => {
+    assert.throws(() => canonicalizeUrl("http://example.com/v1"), /insecure/);
+    assert.throws(() => canonicalizeUrl("file:///tmp/models"), /https/);
+    assert.equal(canonicalizeUrl("http://127.0.0.1:8080/v1"), "http://127.0.0.1:8080/v1");
+  });
+
   it("canonicalizes host and trailing slash", () => {
     assert.equal(canonicalizeUrl("https://ELY.example.com/v1/"), "https://ely.example.com/v1");
   });

@@ -33,10 +33,13 @@ export function parseCatalogBody(text: string): CatalogItem[] {
   }
 
   const items: CatalogItem[] = [];
+  const seen = new Set<string>();
   const push = (id: string, name?: string) => {
     if (!id) return;
     let clean = id;
     if (clean.startsWith("models/")) clean = clean.slice("models/".length);
+    if (seen.has(clean)) return;
+    seen.add(clean);
     items.push({ id: clean, name });
   };
 
@@ -100,6 +103,10 @@ export async function fetchCatalog(opts: {
     headers["x-api-key"] = opts.apiKey;
     headers["anthropic-version"] = "2023-06-01";
   }
+  if (opts.api === "google-generative-ai") {
+    delete headers.Authorization;
+    headers["x-goog-api-key"] = opts.apiKey;
+  }
 
   let lastStatus: number | undefined;
   let lastBody = "";
@@ -136,6 +143,7 @@ export async function fetchCatalog(opts: {
   }
 
   const v1 = suggestV1(opts.api, opts.baseUrl);
+  const safeBody = opts.apiKey ? lastBody.split(opts.apiKey).join("[redacted]") : lastBody;
   return {
     ok: false,
     items: [],
@@ -144,8 +152,8 @@ export async function fetchCatalog(opts: {
     html: sawHtml,
     suggestV1: sawHtml ? v1 : v1,
     error: lastStatus
-      ? `HTTP ${lastStatus}: ${truncateForNotify(lastBody)}`
-      : truncateForNotify(lastBody || "catalog fetch failed"),
+      ? `HTTP ${lastStatus}: ${truncateForNotify(safeBody)}`
+      : truncateForNotify(safeBody || "catalog fetch failed"),
   };
 }
 

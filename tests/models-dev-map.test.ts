@@ -92,6 +92,33 @@ describe("modelCompatFromMatch", () => {
     const compat = modelCompatFromMatch("openai-completions", hit);
     assert.equal(compat?.thinkingFormat, "deepseek");
   });
+
+  it("uses OpenAI effort semantics for Kimi K3", () => {
+    const hit = matchOfficial("kimi-k3", catalog);
+    const compat = modelCompatFromMatch("openai-completions", hit);
+    assert.equal(compat?.thinkingFormat, "openai");
+    assert.equal(compat?.requiresReasoningContentOnAssistantMessages, true);
+  });
+
+  it("does not force adaptive thinking on old Claude generations", () => {
+    const compat = modelCompatFromMatch("anthropic-messages", {
+      kind: "official",
+      bucket: "anthropic",
+      officialId: "claude-sonnet-4-5",
+      official: { id: "claude-sonnet-4-5", family: "claude-sonnet" },
+    });
+    assert.equal(compat?.forceAdaptiveThinking, undefined);
+  });
+
+  it("enables adaptive thinking at the Claude 4.6 boundary", () => {
+    const compat = modelCompatFromMatch("anthropic-messages", {
+      kind: "official",
+      bucket: "anthropic",
+      officialId: "claude-opus-4-6",
+      official: { id: "claude-opus-4-6", family: "claude-opus" },
+    });
+    assert.equal(compat?.forceAdaptiveThinking, true);
+  });
 });
 
 describe("buildDraft", () => {

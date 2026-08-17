@@ -25,6 +25,7 @@ export function getSidecarPath(): string {
 
 export function backupName(now = new Date()): string {
   const pad = (n: number) => String(n).padStart(2, "0");
+  const millis = String(now.getMilliseconds()).padStart(3, "0");
   const stamp = [
     now.getFullYear(),
     pad(now.getMonth() + 1),
@@ -33,7 +34,7 @@ export function backupName(now = new Date()): string {
     pad(now.getHours()),
     pad(now.getMinutes()),
     pad(now.getSeconds()),
-  ].join("");
+  ].join("") + `-${millis}`;
   return `models.json.bak-${stamp}`;
 }
 
@@ -45,7 +46,11 @@ export function getProviderBackupDir(): string {
   return join(agentDir(), "backups");
 }
 
+export function providerBackupId(providerId: string): string {
+  return providerId.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 64) || "provider";
+}
+
 export function getProviderBackupPath(providerId: string, now = new Date()): string {
   const stamp = backupName(now).replace("models.json.bak-", "");
-  return join(getProviderBackupDir(), `${providerId}-${stamp}.json`);
+  return join(getProviderBackupDir(), `${providerBackupId(providerId)}-${stamp}.json`);
 }

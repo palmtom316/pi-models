@@ -17,10 +17,11 @@ export async function readSidecar(path = getSidecarPath()): Promise<Sidecar> {
 }
 
 export async function writeSidecar(data: Sidecar, path = getSidecarPath()): Promise<void> {
+  const current = await readSidecar(path);
   const safe: Sidecar = {
-    cacheFetchedAt: data.cacheFetchedAt,
-    lastProvider: data.lastProvider,
-    lastEndpoints: data.lastEndpoints,
+    cacheFetchedAt: data.cacheFetchedAt ?? current.cacheFetchedAt,
+    lastProvider: data.lastProvider ?? current.lastProvider,
+    lastEndpoints: data.lastEndpoints ?? current.lastEndpoints,
   };
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, `${JSON.stringify(safe, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
