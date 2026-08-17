@@ -9,6 +9,7 @@ export type HubUi = OverlayCtx & {
   secret: (title: string) => Promise<string | undefined>;
   multiSelect: (title: string, items: MultiSelectItem[]) => Promise<string[] | undefined>;
   loader: <T>(title: string, work: (signal: AbortSignal) => Promise<T>, fallback: T) => Promise<T>;
+  notify: (message: string, type?: "info" | "warning" | "error") => void;
 };
 
 export function createHubUi(ctx: OverlayCtx): HubUi {
@@ -20,6 +21,7 @@ export function createHubUi(ctx: OverlayCtx): HubUi {
     secret: (title) => overlayInput(ctx, title, undefined, { secret: true }),
     multiSelect: (title, items) => overlayMultiSelect(ctx, title, items),
     loader: (title, work, fallback) => overlayLoader(ctx, title, work, fallback),
+    notify: (message, type) => ctx.ui.notify(message, type),
   };
 }
 
