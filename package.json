@@ -1,0 +1,22 @@
+{
+  "name": "pi-hub-models",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pi TUI wizard: add a provider with multiple APIs to models.json",
+  "keywords": ["pi-package", "pi-extension"],
+  "license": "MIT",
+  "type": "module",
+  "pi": {
+    "extensions": ["./src/index.ts"]
+  },
+  "scripts": {
+    "test": "node --experimental-strip-types --test tests/*.test.ts"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*"
+  }
+}
