@@ -326,8 +326,11 @@ For [pi.dev/packages](https://pi.dev/packages) the package must be on npm. This 
 OTP, or long-lived token. One-time setup:
 
 1. Open [package settings](https://www.npmjs.com/package/@palmtom/pi-models) → **Trusted Publisher**.
-2. GitHub Actions: user `palmtom316`, repo `pi-models`, workflow filename `publish.yml`.
-3. Allow **npm publish**.
+2. GitHub Actions: user `palmtom316`, repo `pi-models`, workflow filename `publish.yml` (filename only, not a path).
+3. Leave **Environment** empty unless the workflow uses one.
+4. Allow **npm publish**.
+
+A mismatch (wrong owner/repo/filename/environment) shows up as `E404` on publish, not as an auth error.
 
 After that, a release is just a version bump + tag:
 
@@ -625,8 +628,11 @@ pi install git:github.com/palmtom316/pi-models
 [Trusted Publishing](https://docs.npmjs.com/trusted-publishers)，本地不再 `npm login` / OTP / token。一次性配置：
 
 1. 打开 [包设置](https://www.npmjs.com/package/@palmtom/pi-models) → **Trusted Publisher**。
-2. GitHub Actions：用户 `palmtom316`，仓库 `pi-models`，workflow 文件名 `publish.yml`。
-3. 勾选 **npm publish**。
+2. GitHub Actions：用户 `palmtom316`，仓库 `pi-models`，workflow 文件名 `publish.yml`（只要文件名，不要路径）。
+3. **Environment** 留空（workflow 没用 GitHub Environment）。
+4. 勾选 **npm publish**。
+
+配置对不上（用户名 / 仓库 / 文件名 / Environment）时，发布会报 `E404`，看起来像包不存在。
 
 之后发布只要改版本号 + 打 tag：
 

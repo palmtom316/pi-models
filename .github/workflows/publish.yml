@@ -6,6 +6,8 @@ on:
       - "v*"
   workflow_dispatch:
 
+# OIDC for npm trusted publishing. Do not set registry-url / NODE_AUTH_TOKEN:
+# setup-node would inject a dummy token and npm would skip OIDC (E404).
 permissions:
   id-token: write
   contents: read
@@ -13,13 +15,18 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
           node-version: "24"
-          registry-url: "https://registry.npmjs.org"
           package-manager-cache: false
       - run: npm ci
       - run: npm test
-      - run: npm publish --access public
+      - name: Publish to npm
+        run: |
+          unset NODE_AUTH_TOKEN NPM_TOKEN
+          npm publish --access public
