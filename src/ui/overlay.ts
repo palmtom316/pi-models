@@ -72,7 +72,7 @@ export async function overlayLoader<T>(
           width,
           title,
           body: inner,
-          footer: "esc cancel",
+          footer: "esc back",
         });
       },
       handleInput: (data: string) => loader.handleInput(data),

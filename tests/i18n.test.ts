@@ -16,7 +16,7 @@ describe("i18n", () => {
     setLang("zh");
     assert.equal(getLang(), "zh");
     assert.equal(t().menuNew, "新建 provider");
-    assert.equal(t().menuCancel, "取消");
+    assert.equal(t().menuExit, "退出");
   });
 
   it("otherLang toggles between en and zh", () => {

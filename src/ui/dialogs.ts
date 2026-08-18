@@ -15,11 +15,18 @@ function makeSelect(items: SelectItem[], rows: number, theme: ThemeLike): Select
   return select;
 }
 
+export const FOOTER_SELECT = "↑↓ navigate • enter select • esc back";
+export const FOOTER_SELECT_EXIT = "↑↓ navigate • enter select • esc exit";
+export const FOOTER_CONFIRM = "↑↓ navigate • enter confirm • esc back";
+export const FOOTER_INPUT = "enter confirm • esc back";
+export const FOOTER_SECRET = "hidden • enter confirm • esc back";
+
 export async function overlaySelect(
   ctx: OverlayCtx,
   title: string,
   options: string[],
   subtitle?: string,
+  footer: string = FOOTER_SELECT,
 ): Promise<string | undefined> {
   if (options.length === 0) return undefined;
   return pimCustom<string | undefined>(ctx, (tui, theme, _kb, done) => {
@@ -51,7 +58,7 @@ export async function overlaySelect(
           title,
           subtitle,
           body: select.render(Math.max(1, width - 2)),
-          footer: "↑↓ navigate • enter select • esc cancel",
+          footer,
         });
       },
       handleInput: (data: string) => {
@@ -67,8 +74,8 @@ export async function overlayConfirm(
   ctx: OverlayCtx,
   title: string,
   message: string,
-): Promise<boolean> {
-  return pimCustom<boolean>(ctx, (tui, theme, _kb, done) => {
+): Promise<boolean | undefined> {
+  return pimCustom<boolean | undefined>(ctx, (tui, theme, _kb, done) => {
     const items: SelectItem[] = [
       { value: "yes", label: "Yes" },
       { value: "no", label: "No" },
@@ -77,7 +84,7 @@ export async function overlayConfirm(
     let select = makeSelect(items, rows, theme);
     const bind = () => {
       select.onSelect = (item) => done(item.value === "yes");
-      select.onCancel = () => done(false);
+      select.onCancel = () => done(undefined);
     };
     bind();
     return {
@@ -101,7 +108,7 @@ export async function overlayConfirm(
           width,
           title,
           body: [...note, "", ...select.render(inner)],
-          footer: "↑↓ navigate • enter confirm • esc cancel",
+          footer: FOOTER_CONFIRM,
         });
       },
       handleInput: (data: string) => {
@@ -145,7 +152,7 @@ export async function overlayInput(
           title,
           subtitle: hint || undefined,
           body: painted,
-          footer: opts.secret ? "hidden • enter confirm • esc cancel" : "enter confirm • esc cancel",
+          footer: opts.secret ? FOOTER_SECRET : FOOTER_INPUT,
         });
       },
       handleInput: (data: string) => {
@@ -219,7 +226,7 @@ export async function overlayMultiSelect(
           width,
           title,
           body,
-          footer: `space toggle • ctrl+a visible • ctrl+h hidden • enter ${checked.size} • esc cancel`,
+          footer: `space toggle • ctrl+a visible • ctrl+h hidden • enter ${checked.size} • esc back`,
         });
       },
       handleInput: (data: string) => {

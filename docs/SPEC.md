@@ -190,11 +190,14 @@ Provider 名：`^[A-Za-z][A-Za-z0-9_-]{0,31}$`。撞内置 id（`openai`、`anth
 
 ```text
 /pim-models
-  1. 选动作
+  1. 选动作（完成后回到本层；Esc 逐层返回，主菜单 Esc / 退出才关 overlay）
+       查看已有 provider 及模型
        新建 provider
        给已有 provider 加 API / 加模型
        管理：备份 / 删除 provider / 删除模型 / 编辑已写入能力
        刷新 models.dev 缓存
+       语言
+       退出
   2. 新建
        掩码 input name / apiKey
        循环添加 API（至少一条才允许去拉模型）：
@@ -203,7 +206,7 @@ Provider 名：`^[A-Za-z][A-Za-z0-9_-]{0,31}$`。撞内置 id（`openai`、`anth
          可选：关 UA
          [再加一条] / [去拉模型]
   3. 对每条 API
-       BorderedLoader + Esc 取消
+       BorderedLoader + Esc 返回上一层
        GET 目录（§7）
        先匹配内置常用表，未命中且用户勾选后再拉 models.dev（§8）
        标注：✓ builtin / ✓ official / ~ fuzzy / ? unmatched / ! conflict

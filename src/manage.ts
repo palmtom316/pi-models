@@ -13,7 +13,7 @@ import { recordToDraft } from "./caps.ts";
 import { editDraft } from "./ui/edit-caps.ts";
 import type { PimUi } from "./ui/pim-ui.ts";
 import type { ModelsFile } from "./types.ts";
-import { t, type Lang } from "./i18n.ts";
+import { t } from "./i18n.ts";
 
 export type RegistryCtx = {
   modelRegistry: {
@@ -43,7 +43,7 @@ export async function persistFile(
       tr.confirmRollback,
       backupPath ? tr.confirmRollbackRestore(backupPath) : tr.confirmRollbackRemove,
     );
-    if (restore) {
+    if (restore === true) {
       await rollbackModelsFile(backupPath);
       await ctx.modelRegistry.refresh();
       const rollbackError = ctx.modelRegistry.getError();
@@ -79,7 +79,7 @@ export async function wizardDeleteProvider(ui: PimUi, ctx: RegistryCtx, file: Mo
   if (!name) return;
   const count = file.providers[name]?.models?.length ?? 0;
   const ok = await ui.confirm(tr.confirmDeleteProvider, tr.confirmDeleteProviderMsg(name, count));
-  if (!ok) return;
+  if (ok !== true) return;
   const backup = await writeProviderBackup(file, name);
   await persistFile(ui, ctx, deleteProvider(file, name), tr.deletedProvider(name, backup));
 }
@@ -103,9 +103,10 @@ export async function wizardDeleteModels(ui: PimUi, ctx: RegistryCtx, file: Mode
   );
   if (!selected || selected.length === 0) return;
   const ok = await ui.confirm(tr.confirmDeleteModels, tr.confirmDeleteModelsMsg(selected.length, name, selected));
-  if (!ok) return;
+  if (ok !== true) return;
   await writeProviderBackup(file, name);
-  await persistFile(ui, ctx, deleteModels(file, name, selected), tr.deletedModels(selected.length, name));}
+  await persistFile(ui, ctx, deleteModels(file, name, selected), tr.deletedModels(selected.length, name));
+}
 
 export async function wizardEditModels(ui: PimUi, ctx: RegistryCtx, file: ModelsFile): Promise<void> {
   const tr = t();
@@ -139,18 +140,20 @@ export async function wizardEditModels(ui: PimUi, ctx: RegistryCtx, file: Models
 }
 
 export async function runManageMenu(ui: PimUi, ctx: RegistryCtx): Promise<void> {
-  const tr = t();
-  const file = await readModelsFile();
-  const action = await ui.select(tr.manageTitle, [
-    tr.manageBackup,
-    tr.manageDeleteProvider,
-    tr.manageDeleteModels,
-    tr.manageEditCaps,
-    tr.manageBack,
-  ]);
-  if (!action || action === tr.manageBack) return;
-  if (action === tr.manageBackup) return wizardBackupProvider(ui, file);
-  if (action === tr.manageDeleteProvider) return wizardDeleteProvider(ui, ctx, file);
-  if (action === tr.manageDeleteModels) return wizardDeleteModels(ui, ctx, file);
-  if (action === tr.manageEditCaps) return wizardEditModels(ui, ctx, file);
+  while (true) {
+    const tr = t();
+    const file = await readModelsFile();
+    const action = await ui.select(tr.manageTitle, [
+      tr.manageBackup,
+      tr.manageDeleteProvider,
+      tr.manageDeleteModels,
+      tr.manageEditCaps,
+      tr.manageBack,
+    ]);
+    if (!action || action === tr.manageBack) return;
+    if (action === tr.manageBackup) await wizardBackupProvider(ui, file);
+    else if (action === tr.manageDeleteProvider) await wizardDeleteProvider(ui, ctx, file);
+    else if (action === tr.manageDeleteModels) await wizardDeleteModels(ui, ctx, file);
+    else if (action === tr.manageEditCaps) await wizardEditModels(ui, ctx, file);
+  }
 }

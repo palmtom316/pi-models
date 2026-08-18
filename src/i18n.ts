@@ -15,7 +15,7 @@ export interface Strings {
   menuView: string;
   menuRefresh: string;
   menuLang: (current: Lang) => string;
-  menuCancel: string;
+  menuExit: string;
 
   // manage menu
   manageTitle: string;
@@ -174,7 +174,7 @@ const en: Strings = {
   menuView: "View existing providers & models",
   menuRefresh: "Refresh models.dev cache",
   menuLang: () => "Language: English",
-  menuCancel: "Cancel",
+  menuExit: "Exit",
 
   manageTitle: "Manage models.json",
   manageBackup: "Backup a provider",
@@ -318,7 +318,7 @@ const zh: Strings = {
   menuView: "查看已有 provider 及模型",
   menuRefresh: "刷新 models.dev 缓存",
   menuLang: (current) => current === "zh" ? "语言：中文" : "Language: English",
-  menuCancel: "取消",
+  menuExit: "退出",
 
   manageTitle: "管理 models.json",
   manageBackup: "备份 provider",

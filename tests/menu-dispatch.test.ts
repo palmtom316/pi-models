@@ -11,9 +11,9 @@ describe("menu dispatch robustness", () => {
     assert.notEqual(en, zh);
     // and neither collides with other menu labels
     setLang("en");
-    const enLabels = [t().menuNew, t().menuAdd, t().menuManage, t().menuView, t().menuRefresh, t().menuCancel];
+    const enLabels = [t().menuNew, t().menuAdd, t().menuManage, t().menuView, t().menuRefresh, t().menuExit];
     setLang("zh");
-    const zhLabels = [t().menuNew, t().menuAdd, t().menuManage, t().menuView, t().menuRefresh, t().menuCancel];
+    const zhLabels = [t().menuNew, t().menuAdd, t().menuManage, t().menuView, t().menuRefresh, t().menuExit];
     assert.ok(!enLabels.includes(en));
     assert.ok(!zhLabels.includes(zh));
     setLang("en");

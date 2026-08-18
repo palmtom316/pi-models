@@ -1,12 +1,10 @@
 import type { OverlayCtx } from "./overlay.ts";
 import { overlayLoader } from "./overlay.ts";
 import { overlayConfirm, overlayInput, overlayMultiSelect, overlaySelect, type MultiSelectItem } from "./dialogs.ts";
-import type { Lang, Strings } from "../i18n.ts";
-import { getLang, t } from "../i18n.ts";
 
 export type PimUi = OverlayCtx & {
-  select: (title: string, options: string[], subtitle?: string) => Promise<string | undefined>;
-  confirm: (title: string, message: string) => Promise<boolean>;
+  select: (title: string, options: string[], subtitle?: string, footer?: string) => Promise<string | undefined>;
+  confirm: (title: string, message: string) => Promise<boolean | undefined>;
   input: (title: string, placeholder?: string) => Promise<string | undefined>;
   secret: (title: string) => Promise<string | undefined>;
   multiSelect: (title: string, items: MultiSelectItem[]) => Promise<string[] | undefined>;
@@ -17,7 +15,7 @@ export type PimUi = OverlayCtx & {
 export function createPimUi(ctx: OverlayCtx): PimUi {
   return {
     ...ctx,
-    select: (title, options, subtitle) => overlaySelect(ctx, title, options, subtitle),
+    select: (title, options, subtitle, footer) => overlaySelect(ctx, title, options, subtitle, footer),
     confirm: (title, message) => overlayConfirm(ctx, title, message),
     input: (title, placeholder) => overlayInput(ctx, title, placeholder),
     secret: (title) => overlayInput(ctx, title, undefined, { secret: true }),

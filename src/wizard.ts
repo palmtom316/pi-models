@@ -19,10 +19,11 @@ import { canonicalizeUrl } from "./url.ts";
 import { writeSidecar } from "./sidecar.ts";
 import { PI_APIS, type ModelDraft, type ModelsFile, type PiApi } from "./types.ts";
 import { createPimUi, type PimUi } from "./ui/pim-ui.ts";
+import { FOOTER_SELECT_EXIT } from "./ui/dialogs.ts";
 import { maybeEditDrafts } from "./ui/edit-caps.ts";
-import { loadLang, saveLang, t, otherLang, getLang, type Lang } from "./i18n.ts";
+import { loadLang, saveLang, t, otherLang, getLang } from "./i18n.ts";
 
-type CmdCtx = {
+export type CmdCtx = {
   mode: string;
   ui: {
     notify: (message: string, type?: "info" | "warning" | "error") => void;
@@ -68,10 +69,10 @@ async function collectGroups(
 ): Promise<Array<{ providerSuffix: string; apiKey: string; drafts: ModelDraft[] }> | undefined> {
   const tr = t();
   const groups: Array<{ providerSuffix: string; apiKey: string; drafts: ModelDraft[] }> = [];
-  let groupIndex = 0;
+  let nextIndex = 1;
 
   while (true) {
-    groupIndex++;
+    const groupIndex = nextIndex;
     const suffix = groupIndex === 1 ? "" : `-${groupIndex}`;
     const keyTitle = groupIndex === 1
       ? tr.secretApiKey
@@ -83,13 +84,14 @@ async function collectGroups(
     }
 
     const drafts = await draftsForApi(ui, { api, baseUrl, userAgent }, apiKey, existingIds);
-    if (drafts === undefined) return undefined;
+    if (drafts === undefined) continue;
     for (const d of drafts) existingIds.add(d.id);
 
     groups.push({ providerSuffix: suffix, apiKey, drafts });
+    nextIndex++;
 
     const more = await ui.confirm(tr.groupAnotherKey, tr.groupAnotherKeyMsg);
-    if (!more) break;
+    if (more !== true) break;
   }
 
   return groups.length ? groups : undefined;
@@ -104,26 +106,33 @@ async function collectApis(ui: PimUi): Promise<Array<{ api: PiApi; baseUrl: stri
   const apis: Array<{ api: PiApi; baseUrl: string; userAgent: boolean }> = [];
   while (true) {
     const api = await pickApi(ui);
-    if (!api) {
-      if (apis.length === 0) return undefined;
-      break;
+    if (!api) return apis.length ? apis : undefined;
+
+    let baseUrl: string | undefined;
+    let userAgent: boolean | undefined;
+    while (userAgent === undefined) {
+      if (!baseUrl) {
+        const raw = await ui.input(tr.inputBaseUrl, "https://example.com/v1");
+        if (!raw) break;
+        try {
+          baseUrl = canonicalizeUrl(raw);
+        } catch (error) {
+          ui.notify(error instanceof Error ? error.message : String(error), "error");
+          continue;
+        }
+      }
+      const ua = await ui.confirm(tr.confirmUserAgent, tr.confirmUserAgentMsg);
+      if (ua === undefined) {
+        baseUrl = undefined;
+        continue;
+      }
+      userAgent = ua !== false;
     }
-    const raw = await ui.input(tr.inputBaseUrl, "https://example.com/v1");
-    if (!raw) {
-      if (apis.length === 0) return undefined;
-      break;
-    }
-    let baseUrl: string;
-    try {
-      baseUrl = canonicalizeUrl(raw);
-    } catch (error) {
-      ui.notify(error instanceof Error ? error.message : String(error), "error");
-      continue;
-    }
-    const ua = await ui.confirm(tr.confirmUserAgent, tr.confirmUserAgentMsg);
-    apis.push({ api, baseUrl, userAgent: ua !== false });
+    if (!baseUrl || userAgent === undefined) continue;
+
+    apis.push({ api, baseUrl, userAgent });
     const more = await ui.confirm(tr.addAnotherApi, tr.addAnotherApiMsg(apis.length));
-    if (!more) break;
+    if (more !== true) break;
   }
   return apis.length ? apis : undefined;
 }
@@ -153,7 +162,8 @@ export async function draftsForApi(
   if (items.length === 0) {
     if (catalog.ok) ui.notify(tr.noModelsReturned, "warning");
     const typed = await ui.input(tr.inputManualIds, "claude-opus-5, gpt-5.6-sol");
-    if (!typed) return [];
+    if (typed === undefined) return undefined;
+    if (!typed.trim()) return [];
     items = parseManualIds(typed).map((id) => ({ id }));
   }
 
@@ -162,57 +172,71 @@ export async function draftsForApi(
     const rank = (kind: ModelDraft["match"]["kind"]) => kind === "official" ? 0 : kind === "fuzzy" ? 1 : 2;
     return rank(a.match.kind) - rank(b.match.kind) || a.id.localeCompare(b.id);
   });
-  const selected = await ui.multiSelect(
-    `${spec.api} @ ${spec.baseUrl}`,
-    orderedDrafts.map((d) => ({
-      value: d.id,
-      label: d.id,
-      description: `${existingIds.has(d.id) ? `${tr.conflictLabel}  ` : ""}${matchLabel(d.match)}  ${d.contextWindow}/${d.maxTokens}`,
-      hiddenByDefault: isNonChatModality(d.id, d.match.official),
-      checked: d.match.kind === "official" && !existingIds.has(d.id),
-    })),
-  );
-  if (!selected) return undefined;
+  const selectItems = orderedDrafts.map((d) => ({
+    value: d.id,
+    label: d.id,
+    description: `${existingIds.has(d.id) ? `${tr.conflictLabel}  ` : ""}${matchLabel(d.match)}  ${d.contextWindow}/${d.maxTokens}`,
+    hiddenByDefault: isNonChatModality(d.id, d.match.official),
+    checked: d.match.kind === "official" && !existingIds.has(d.id),
+  }));
 
-  const pickedItems = items.filter((item) => selected.includes(item.id));
-  const unknownSelected = preview.unknownIds.filter((id) => selected.includes(id));
-  let drafts = preview.drafts.filter((d) => selected.includes(d.id));
-  if (unknownSelected.length > 0) {
-    const enriched = await ui.loader(
-      tr.lookingUp(unknownSelected.length),
-      (signal) =>
-        enrichUnknownDrafts(pickedItems, spec.api, spec.baseUrl, unknownSelected, {
-          userAgent: spec.userAgent,
-          signal,
-        }),
-      { drafts },
-    );
-    drafts = enriched.drafts.filter((d) => selected.includes(d.id));
-    if (enriched.remote?.warning) ui.notify(enriched.remote.warning, "warning");
-    else if (enriched.remote?.fetchedAt) ui.notify(tr.modelsDevCatalog(enriched.remote.fetchedAt), "info");
-  }
+  while (true) {
+    const selected = await ui.multiSelect(`${spec.api} @ ${spec.baseUrl}`, selectItems);
+    if (!selected) return undefined;
 
-  const out: ModelDraft[] = [];
-  for (const draft of drafts) {
-    if (draft.match.kind === "fuzzy") {
-      const accepted = await ui.confirm(
-        tr.confirmFuzzyTitle,
-        tr.confirmFuzzyMsg(draft.id, draft.match.bucket!, draft.match.officialId!),
+    const pickedItems = items.filter((item) => selected.includes(item.id));
+    const unknownSelected = preview.unknownIds.filter((id) => selected.includes(id));
+    let drafts = preview.drafts.filter((d) => selected.includes(d.id));
+    if (unknownSelected.length > 0) {
+      const enriched = await ui.loader(
+        tr.lookingUp(unknownSelected.length),
+        (signal) =>
+          enrichUnknownDrafts(pickedItems, spec.api, spec.baseUrl, unknownSelected, {
+            userAgent: spec.userAgent,
+            signal,
+          }),
+        { drafts },
       );
-      if (!accepted) continue;
+      drafts = enriched.drafts.filter((d) => selected.includes(d.id));
+      if (enriched.remote?.warning) ui.notify(enriched.remote.warning, "warning");
+      else if (enriched.remote?.fetchedAt) ui.notify(tr.modelsDevCatalog(enriched.remote.fetchedAt), "info");
     }
-    if (!existingIds.has(draft.id)) {
-      out.push(draft);
-      continue;
+
+    const out: ModelDraft[] = [];
+    let back = false;
+    for (const draft of drafts) {
+      if (draft.match.kind === "fuzzy") {
+        const accepted = await ui.confirm(
+          tr.confirmFuzzyTitle,
+          tr.confirmFuzzyMsg(draft.id, draft.match.bucket!, draft.match.officialId!),
+        );
+        if (accepted === undefined) {
+          back = true;
+          break;
+        }
+        if (!accepted) continue;
+      }
+      if (!existingIds.has(draft.id)) {
+        out.push(draft);
+        continue;
+      }
+      const choice = await ui.select(tr.idExistsTitle(draft.id), [
+        tr.idExistsKeep,
+        tr.idExistsReplace,
+        tr.idExistsSkip,
+      ]);
+      if (!choice) {
+        back = true;
+        break;
+      }
+      if (choice === tr.idExistsReplace) out.push({ ...draft, replaceExisting: true });
     }
-    const choice = await ui.select(tr.idExistsTitle(draft.id), [
-      tr.idExistsKeep,
-      tr.idExistsReplace,
-      tr.idExistsSkip,
-    ]);
-    if (choice === tr.idExistsReplace) out.push({ ...draft, replaceExisting: true });
+    if (back) continue;
+
+    const edited = await maybeEditDrafts(ui, out);
+    if (edited === undefined) continue;
+    return edited;
   }
-  return maybeEditDrafts(ui, out);
 }
 
 export async function persist(
@@ -239,7 +263,7 @@ export async function persist(
     .slice(0, 12)
     .join("\n");
   const ok = await ui.confirm(tr.confirmWriteTitle, `${tr.confirmWriteMsg(drafts.length, providerId)}\n${summary}`);
-  if (!ok) return undefined;
+  if (ok !== true) return undefined;
 
   const merged = applyDrafts(file, { providerId, apiKey, drafts, mode });
   const { backupPath } = await writeModelsFile(merged.file);
@@ -251,7 +275,7 @@ export async function persist(
       tr.confirmRollback,
       backupPath ? tr.confirmRollbackRestore(backupPath) : tr.confirmRollbackRemove,
     );
-    if (restore) {
+    if (restore === true) {
       await rollbackModelsFile(backupPath);
       await ctx.modelRegistry.refresh();
       const rollbackError = ctx.modelRegistry.getError();
@@ -272,7 +296,7 @@ export async function persist(
   const first = drafts[0];
   if (first && pi) {
     const jump = await ui.confirm(tr.confirmSwitchModel, tr.confirmSwitchModelMsg(providerId, first.id));
-    if (jump) {
+    if (jump === true) {
       const model = ctx.modelRegistry.find(providerId, first.id);
       const okSwitch = model ? await pi.setModel(model) : false;
       if (!okSwitch) ui.notify(tr.setModelFailed, "warning");
@@ -281,54 +305,96 @@ export async function persist(
   return merged.file;
 }
 
-async function wizardNew(ctx: CmdCtx, ui: PimUi, file: ModelsFile, pi: { setModel: Function }): Promise<void> {
+export async function wizardNew(ctx: CmdCtx, ui: PimUi, file: ModelsFile, pi: { setModel: Function }): Promise<void> {
   const tr = t();
-  const name = await ui.input(tr.inputProviderName, "ELY");
-  if (!name) return;
-  if (!providerNameOk(name)) {
-    ui.notify(tr.errNameFormat, "error");
-    return;
-  }
-  if (clashesBuiltin(name)) {
-    const go = await ui.confirm(tr.builtinName, tr.builtinNameConfirm(name));
-    if (!go) return;
-  }
+  let name: string | undefined;
+  let api: PiApi | undefined;
+  let baseUrl: string | undefined;
+  let userAgent: boolean | undefined;
 
-  // Step 1: pick api type + baseUrl once (shared across all groups)
-  const api = await pickApi(ui);
-  if (!api) return;
-  const raw = await ui.input(tr.inputBaseUrl, "https://example.com/v1");
-  if (!raw) return;
-  let baseUrl: string;
-  try {
-    baseUrl = canonicalizeUrl(raw);
-  } catch (error) {
-    ui.notify(error instanceof Error ? error.message : String(error), "error");
-    return;
-  }
-  const userAgent = (await ui.confirm(tr.confirmUserAgent, tr.confirmUserAgentMsg)) !== false;
-
-  // Step 2: loop over groups — each group has its own apiKey + selected models
-  const existing = new Set<string>();
-  const groups = await collectGroups(ui, name, api, baseUrl, userAgent, existing);
-  if (!groups) return;
-
-  // Write each group as a separate provider (name, name-2, name-3, …).
-  // persist() writes to disk and returns the merged file; chain each group's
-  // result so later groups build on earlier ones instead of overwriting them.
-  let current = file;
-  for (const group of groups) {
-    const providerId = `${name}${group.providerSuffix}`;
-    if (current.providers[providerId]) {
-      const go = await ui.confirm(tr.existsMerge, tr.existsMergeMsg(providerId));
-      if (!go) {
-        ui.notify(tr.groupSkipped(providerId), "warning");
+  while (true) {
+    if (!name) {
+      const typed = await ui.input(tr.inputProviderName, "ELY");
+      if (!typed) return;
+      if (!providerNameOk(typed)) {
+        ui.notify(tr.errNameFormat, "error");
         continue;
       }
+      if (clashesBuiltin(typed)) {
+        const go = await ui.confirm(tr.builtinName, tr.builtinNameConfirm(typed));
+        if (go !== true) continue;
+      }
+      name = typed;
+      continue;
     }
-    const next = await persist(ctx, ui, current, providerId, group.apiKey, group.drafts, "merge", pi);
-    if (next) current = next;
+
+    if (!api) {
+      api = await pickApi(ui);
+      if (!api) {
+        name = undefined;
+        continue;
+      }
+      continue;
+    }
+
+    if (!baseUrl) {
+      const raw = await ui.input(tr.inputBaseUrl, "https://example.com/v1");
+      if (!raw) {
+        api = undefined;
+        continue;
+      }
+      try {
+        baseUrl = canonicalizeUrl(raw);
+      } catch (error) {
+        ui.notify(error instanceof Error ? error.message : String(error), "error");
+        continue;
+      }
+      continue;
+    }
+
+    if (userAgent === undefined) {
+      const ua = await ui.confirm(tr.confirmUserAgent, tr.confirmUserAgentMsg);
+      if (ua === undefined) {
+        baseUrl = undefined;
+        continue;
+      }
+      userAgent = ua !== false;
+      continue;
+    }
+
+    // Step 2: loop over groups — each group has its own apiKey + selected models.
+    // ESC on the first key returns to the User-Agent prompt.
+    const existing = new Set<string>();
+    const groups = await collectGroups(ui, name, api, baseUrl, userAgent, existing);
+    if (!groups) {
+      userAgent = undefined;
+      continue;
+    }
+
+    // Write each group as a separate provider (name, name-2, name-3, …).
+    // persist() writes to disk and returns the merged file; chain each group's
+    // result so later groups build on earlier ones instead of overwriting them.
+    let current = file;
+    for (const group of groups) {
+      const providerId = `${name}${group.providerSuffix}`;
+      if (current.providers[providerId]) {
+        const go = await ui.confirm(tr.existsMerge, tr.existsMergeMsg(providerId));
+        if (go !== true) {
+          ui.notify(tr.groupSkipped(providerId), "warning");
+          continue;
+        }
+      }
+      const next = await persist(ctx, ui, current, providerId, group.apiKey, group.drafts, "merge", pi);
+      if (next) current = next;
+    }
+    return;
   }
+}
+
+function storedApiKey(provider: { apiKey?: string } | undefined): string | undefined {
+  const key = provider?.apiKey;
+  if (!key || key.startsWith("$") || key.startsWith("!")) return undefined;
+  return key;
 }
 
 async function wizardAddApi(ctx: CmdCtx, ui: PimUi, file: ModelsFile, pi: { setModel: Function }): Promise<void> {
@@ -338,32 +404,50 @@ async function wizardAddApi(ctx: CmdCtx, ui: PimUi, file: ModelsFile, pi: { setM
     ui.notify(tr.noProvidersCreateFirst, "warning");
     return;
   }
-  const name = await ui.select(tr.selectProvider, names);
-  if (!name) return;
-  const provider = file.providers[name];
-  const apiKey =
-    (provider?.apiKey && !provider.apiKey.startsWith("$") && !provider.apiKey.startsWith("!")
-      ? provider.apiKey
-      : undefined) ?? (await ui.secret(tr.secretApiKeyFor(name)));
-  if (!apiKey) return;
 
-  const specs = await collectApis(ui);
-  if (!specs) return;
-  const existing = new Set((provider?.models ?? []).map((m) => m.id));
-  const all: ModelDraft[] = [];
-  for (const spec of specs) {
-    const drafts = await draftsForApi(ui, spec, apiKey, existing);
-    if (drafts === undefined) return;
-    for (const d of drafts) {
-      all.push(d);
-      existing.add(d.id);
+  while (true) {
+    const name = await ui.select(tr.selectProvider, names);
+    if (!name) return;
+    const provider = file.providers[name];
+    const existingKey = storedApiKey(provider);
+    let typedKey = existingKey;
+
+    while (true) {
+      if (!typedKey) {
+        typedKey = await ui.secret(tr.secretApiKeyFor(name));
+        if (!typedKey) break;
+      }
+
+      const specs = await collectApis(ui);
+      if (!specs) {
+        if (existingKey) break;
+        typedKey = undefined;
+        continue;
+      }
+
+      const existing = new Set((provider?.models ?? []).map((m) => m.id));
+      const all: ModelDraft[] = [];
+      let cancelled = false;
+      for (const spec of specs) {
+        const drafts = await draftsForApi(ui, spec, typedKey, existing);
+        if (drafts === undefined) {
+          cancelled = true;
+          break;
+        }
+        for (const d of drafts) {
+          all.push(d);
+          existing.add(d.id);
+        }
+      }
+      if (cancelled) continue;
+
+      const modeChoice = await ui.select(tr.applyHowTitle, [tr.applyHowMerge, tr.applyHowReplace, tr.applyHowCancel]);
+      if (!modeChoice || modeChoice === tr.applyHowCancel) return;
+      const mode = modeChoice === tr.applyHowReplace ? "replace-endpoint" : "merge";
+      await persist(ctx, ui, file, name, existingKey ? undefined : typedKey, all, mode, pi);
+      return;
     }
   }
-
-  const modeChoice = await ui.select(tr.applyHowTitle, [tr.applyHowMerge, tr.applyHowReplace, tr.applyHowCancel]);
-  if (!modeChoice || modeChoice === tr.applyHowCancel) return;
-  const mode = modeChoice === tr.applyHowReplace ? "replace-endpoint" : "merge";
-  await persist(ctx, ui, file, name, provider?.apiKey ? undefined : apiKey, all, mode, pi);
 }
 
 async function wizardRefreshCache(ui: PimUi): Promise<void> {
@@ -389,8 +473,8 @@ async function wizardViewProviders(ui: PimUi, ctx: CmdCtx): Promise<void> {
   }
 
   while (true) {
-    const choice = await ui.select(tr.viewTitle, names);
-    if (!choice) return;
+    const choice = await ui.select(tr.viewTitle, [...names, tr.viewBack]);
+    if (!choice || choice === tr.viewBack) return;
 
     const providerName = choice;
     const provider = file.providers[providerName];
@@ -438,7 +522,7 @@ async function wizardDeleteModelsForProvider(ui: PimUi, ctx: CmdCtx, file: Model
   );
   if (!selected || selected.length === 0) return;
   const ok = await ui.confirm(tr.confirmDeleteModels, tr.confirmDeleteModelsMsg(selected.length, name, selected));
-  if (!ok) return;
+  if (ok !== true) return;
 
   await writeProviderBackup(file, name);
   await persistFile(ui, ctx, deleteModels(file, name, selected), tr.deletedModels(selected.length, name));
@@ -449,33 +533,58 @@ async function wizardSwitchLang(ui: PimUi): Promise<void> {
   await saveLang(next);
 }
 
-export async function runWizard(ctx: CmdCtx, pi: { setModel: Function }): Promise<void> {
-  if (failNonTui(ctx)) return;
-  await loadLang();
-  const ui = createPimUi(ctx);
+export function mainMenuOptions(): string[] {
   const tr = t();
-
-  const file = await readModelsFile();
-  // Snapshot dispatch labels once — menuLang's label depends on the current
-  // language, so compare against the captured strings, not re-evaluated calls.
-  const langLabel = tr.menuLang(getLang());
-  const cancelLabel = tr.menuCancel;
-  const action = await ui.select(tr.menuTitle, [
+  return [
+    tr.menuView,
     tr.menuNew,
     tr.menuAdd,
     tr.menuManage,
-    tr.menuView,
     tr.menuRefresh,
-    langLabel,
-    cancelLabel,
-  ]);
-  if (!action || action === cancelLabel) return;
-  if (action === tr.menuNew) return wizardNew(ctx, ui, file, pi);
-  if (action === tr.menuAdd) return wizardAddApi(ctx, ui, file, pi);
-  if (action === tr.menuManage) return runManageMenu(ui, ctx);
-  if (action === tr.menuView) return wizardViewProviders(ui, ctx);
-  if (action === tr.menuRefresh) return wizardRefreshCache(ui);
-  if (action === langLabel) return wizardSwitchLang(ui);
+    tr.menuLang(getLang()),
+    tr.menuExit,
+  ];
+}
+
+export async function runMainMenu(ctx: CmdCtx, ui: PimUi, pi: { setModel: Function }): Promise<void> {
+  while (true) {
+    const tr = t();
+    // Snapshot dispatch labels each loop — menuLang depends on the current
+    // language, so compare against the captured strings, not re-evaluated calls.
+    const langLabel = tr.menuLang(getLang());
+    const exitLabel = tr.menuExit;
+    const action = await ui.select(tr.menuTitle, mainMenuOptions(), undefined, FOOTER_SELECT_EXIT);
+    if (!action || action === exitLabel) return;
+    if (action === tr.menuView) {
+      await wizardViewProviders(ui, ctx);
+      continue;
+    }
+    if (action === tr.menuNew) {
+      await wizardNew(ctx, ui, await readModelsFile(), pi);
+      continue;
+    }
+    if (action === tr.menuAdd) {
+      await wizardAddApi(ctx, ui, await readModelsFile(), pi);
+      continue;
+    }
+    if (action === tr.menuManage) {
+      await runManageMenu(ui, ctx);
+      continue;
+    }
+    if (action === tr.menuRefresh) {
+      await wizardRefreshCache(ui);
+      continue;
+    }
+    if (action === langLabel) {
+      await wizardSwitchLang(ui);
+    }
+  }
+}
+
+export async function runWizard(ctx: CmdCtx, pi: { setModel: Function }): Promise<void> {
+  if (failNonTui(ctx)) return;
+  await loadLang();
+  await runMainMenu(ctx, createPimUi(ctx), pi);
 }
 
 export type { WizardApi } from "./types.ts";

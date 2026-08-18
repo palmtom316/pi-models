@@ -32,7 +32,8 @@ async function editThinkingMap(ui: PimUi, map: ThinkingLevelMap): Promise<Thinki
         tr.editDone,
       ],
     );
-    if (!choice || choice === tr.editDone) return next;
+    if (!choice) return undefined;
+    if (choice === tr.editDone) return next;
     const level = choice.split(":")[0] as ThinkingLevel;
     const action = await ui.select(`${level}`, tr.thinkingLevelActions);
     if (!action || action === tr.thinkingBack) continue;
@@ -46,7 +47,7 @@ async function editThinkingMap(ui: PimUi, map: ThinkingLevelMap): Promise<Thinki
 }
 
 export async function editDraft(ui: PimUi, draft: ModelDraft): Promise<ModelDraft | undefined> {
-  const tr = ui.tr();
+  const tr = t();
   let current = { ...draft, thinkingLevelMap: cloneMap(draft.thinkingLevelMap), input: [...draft.input] };
   while (true) {
     const matched = current.match.officialId ? ` → ${current.match.officialId}` : "";
