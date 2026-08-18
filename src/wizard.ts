@@ -5,13 +5,15 @@ import { loadOfficialCatalog } from "./models-dev.ts";
 import {
   applyDrafts,
   clashesBuiltin,
+  deleteModels,
   listExistingProviders,
   providerNameOk,
   readModelsFile,
   rollbackModelsFile,
   writeModelsFile,
+  writeProviderBackup,
 } from "./models-json.ts";
-import { runManageMenu } from "./manage.ts";
+import { runManageMenu, persistFile } from "./manage.ts";
 import { enrichUnknownDrafts, resolveDrafts } from "./resolve.ts";
 import { canonicalizeUrl } from "./url.ts";
 import { writeSidecar } from "./sidecar.ts";
@@ -222,22 +224,22 @@ export async function persist(
   drafts: ModelDraft[],
   mode: "merge" | "replace-endpoint",
   pi?: { setModel: (model: unknown) => Promise<boolean> },
-): Promise<void> {
+): Promise<ModelsFile | undefined> {
   const tr = t();
   if (drafts.length === 0) {
     ui.notify(tr.nothingToWrite, "warning");
-    return;
+    return undefined;
   }
   if (drafts.some((d) => !d.api || !d.baseUrl)) {
     ui.notify(tr.errDraftMissingEndpoint, "error");
-    return;
+    return undefined;
   }
   const summary = drafts
     .map((d) => `${d.id}  ${d.api}`)
     .slice(0, 12)
     .join("\n");
   const ok = await ui.confirm(tr.confirmWriteTitle, `${tr.confirmWriteMsg(drafts.length, providerId)}\n${summary}`);
-  if (!ok) return;
+  if (!ok) return undefined;
 
   const merged = applyDrafts(file, { providerId, apiKey, drafts, mode });
   const { backupPath } = await writeModelsFile(merged.file);
@@ -255,7 +257,7 @@ export async function persist(
       const rollbackError = ctx.modelRegistry.getError();
       ui.notify(rollbackError ? tr.rollbackRefreshFailed(rollbackError) : tr.rolledBack, rollbackError ? "error" : "info");
     }
-    return;
+    return undefined;
   }
   const apis = [...new Set(drafts.map((d) => d.api))].join(", ");
   const conflictNote = merged.skippedConflicts.length;
@@ -276,6 +278,7 @@ export async function persist(
       if (!okSwitch) ui.notify(tr.setModelFailed, "warning");
     }
   }
+  return merged.file;
 }
 
 async function wizardNew(ctx: CmdCtx, ui: PimUi, file: ModelsFile, pi: { setModel: Function }): Promise<void> {
@@ -310,14 +313,21 @@ async function wizardNew(ctx: CmdCtx, ui: PimUi, file: ModelsFile, pi: { setMode
   const groups = await collectGroups(ui, name, api, baseUrl, userAgent, existing);
   if (!groups) return;
 
-  // Write each group as a separate provider (name, name-2, name-3, …)
+  // Write each group as a separate provider (name, name-2, name-3, …).
+  // persist() writes to disk and returns the merged file; chain each group's
+  // result so later groups build on earlier ones instead of overwriting them.
+  let current = file;
   for (const group of groups) {
     const providerId = `${name}${group.providerSuffix}`;
-    if (file.providers[providerId]) {
+    if (current.providers[providerId]) {
       const go = await ui.confirm(tr.existsMerge, tr.existsMergeMsg(providerId));
-      if (!go) continue;
+      if (!go) {
+        ui.notify(tr.groupSkipped(providerId), "warning");
+        continue;
+      }
     }
-    await persist(ctx, ui, file, providerId, group.apiKey, group.drafts, "merge", pi);
+    const next = await persist(ctx, ui, current, providerId, group.apiKey, group.drafts, "merge", pi);
+    if (next) current = next;
   }
 }
 
@@ -372,38 +382,17 @@ async function wizardRefreshCache(ui: PimUi): Promise<void> {
 async function wizardViewProviders(ui: PimUi, ctx: CmdCtx): Promise<void> {
   const tr = t();
   const file = await readModelsFile();
-  const names = listExistingProviders(file);
+  let names = listExistingProviders(file);
   if (names.length === 0) {
     ui.notify(tr.viewNoProviders, "warning");
     return;
   }
 
   while (true) {
-    const options = names.map((n) => tr.viewProviderLabel(n, file.providers[n]?.models?.length ?? 0));
-    options.push(tr.viewDeleteProvider);
-    options.push(tr.viewBack);
+    const choice = await ui.select(tr.viewTitle, names);
+    if (!choice) return;
 
-    const choice = await ui.select(tr.viewTitle, options);
-    if (!choice || choice === tr.viewBack) return;
-
-    if (choice === tr.viewDeleteProvider) {
-      await runManageMenu(ui, ctx);
-      // Re-read after potential modifications
-      const refreshed = await readModelsFile();
-      const newNames = listExistingProviders(refreshed);
-      if (newNames.length === 0) return;
-      // Update names for next loop iteration
-      names.length = 0;
-      names.push(...newNames);
-      // Rebuild file reference
-      Object.assign(file, refreshed);
-      continue;
-    }
-
-    // Find the provider that was selected
-    const idx = options.indexOf(choice);
-    if (idx < 0 || idx >= names.length) continue;
-    const providerName = names[idx];
+    const providerName = choice;
     const provider = file.providers[providerName];
     const models = provider?.models ?? [];
 
@@ -423,9 +412,10 @@ async function wizardViewProviders(ui: PimUi, ctx: CmdCtx): Promise<void> {
     if (modelChoice === tr.viewDeleteModels) {
       // Delegate to the manage delete-models flow but pre-select this provider
       await wizardDeleteModelsForProvider(ui, ctx, file, providerName);
-      // Re-read
-      const refreshed = await readModelsFile();
-      Object.assign(file, refreshed);
+      // Re-read in place so the loop reflects disk state
+      Object.assign(file, await readModelsFile());
+      names = listExistingProviders(file);
+      if (names.length === 0) return;
     }
   }
 }
@@ -450,27 +440,8 @@ async function wizardDeleteModelsForProvider(ui: PimUi, ctx: CmdCtx, file: Model
   const ok = await ui.confirm(tr.confirmDeleteModels, tr.confirmDeleteModelsMsg(selected.length, name, selected));
   if (!ok) return;
 
-  const { writeProviderBackup, deleteModels, writeModelsFile, rollbackModelsFile } = await import("./models-json.ts");
   await writeProviderBackup(file, name);
-  const nextFile = deleteModels(file, name, selected);
-  const { backupPath } = await writeModelsFile(nextFile);
-  await ctx.modelRegistry.refresh();
-  const err = ctx.modelRegistry.getError();
-  if (err) {
-    ui.notify(tr.refreshFailed(err, backupPath), "error");
-    const restore = await ui.confirm(
-      tr.confirmRollback,
-      backupPath ? tr.confirmRollbackRestore(backupPath) : tr.confirmRollbackRemove,
-    );
-    if (restore) {
-      await rollbackModelsFile(backupPath);
-      await ctx.modelRegistry.refresh();
-      const rollbackError = ctx.modelRegistry.getError();
-      ui.notify(rollbackError ? tr.rollbackRefreshFailed(rollbackError) : tr.rolledBack, rollbackError ? "error" : "info");
-    }
-    return;
-  }
-  ui.notify(tr.deletedModels(selected.length, name), "info");
+  await persistFile(ui, ctx, deleteModels(file, name, selected), tr.deletedModels(selected.length, name));
 }
 
 async function wizardSwitchLang(ui: PimUi): Promise<void> {
@@ -485,22 +456,26 @@ export async function runWizard(ctx: CmdCtx, pi: { setModel: Function }): Promis
   const tr = t();
 
   const file = await readModelsFile();
+  // Snapshot dispatch labels once — menuLang's label depends on the current
+  // language, so compare against the captured strings, not re-evaluated calls.
+  const langLabel = tr.menuLang(getLang());
+  const cancelLabel = tr.menuCancel;
   const action = await ui.select(tr.menuTitle, [
     tr.menuNew,
     tr.menuAdd,
     tr.menuManage,
     tr.menuView,
     tr.menuRefresh,
-    tr.menuLang(getLang()),
-    tr.menuCancel,
+    langLabel,
+    cancelLabel,
   ]);
-  if (!action || action === tr.menuCancel) return;
+  if (!action || action === cancelLabel) return;
   if (action === tr.menuNew) return wizardNew(ctx, ui, file, pi);
   if (action === tr.menuAdd) return wizardAddApi(ctx, ui, file, pi);
   if (action === tr.menuManage) return runManageMenu(ui, ctx);
   if (action === tr.menuView) return wizardViewProviders(ui, ctx);
   if (action === tr.menuRefresh) return wizardRefreshCache(ui);
-  if (action === tr.menuLang(getLang())) return wizardSwitchLang(ui);
+  if (action === langLabel) return wizardSwitchLang(ui);
 }
 
 export type { WizardApi } from "./types.ts";

@@ -150,7 +150,7 @@ export async function fetchCatalog(opts: {
     tried,
     status: lastStatus,
     html: sawHtml,
-    suggestV1: sawHtml ? v1 : v1,
+    suggestV1: v1,
     error: lastStatus
       ? `HTTP ${lastStatus}: ${truncateForNotify(safeBody)}`
       : truncateForNotify(safeBody || "catalog fetch failed"),

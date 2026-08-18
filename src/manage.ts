@@ -15,14 +15,24 @@ import type { PimUi } from "./ui/pim-ui.ts";
 import type { ModelsFile } from "./types.ts";
 import { t, type Lang } from "./i18n.ts";
 
-type RegistryCtx = {
+export type RegistryCtx = {
   modelRegistry: {
     refresh: () => Promise<unknown>;
     getError: () => string | undefined;
   };
 };
 
-async function persistFile(ui: PimUi, ctx: RegistryCtx, file: ModelsFile, message: string): Promise<void> {
+/**
+ * Write + refresh + rollback-on-error, shared by every manage/view flow.
+ * Returns the persisted file (disk state) so callers can continue from it,
+ * or undefined when pi rejected the config (rolled back).
+ */
+export async function persistFile(
+  ui: PimUi,
+  ctx: RegistryCtx,
+  file: ModelsFile,
+  message: string,
+): Promise<ModelsFile | undefined> {
   const tr = t();
   const { backupPath } = await writeModelsFile(file);
   await ctx.modelRegistry.refresh();
@@ -39,9 +49,10 @@ async function persistFile(ui: PimUi, ctx: RegistryCtx, file: ModelsFile, messag
       const rollbackError = ctx.modelRegistry.getError();
       ui.notify(rollbackError ? tr.rollbackRefreshFailed(rollbackError) : tr.rolledBack, rollbackError ? "error" : "info");
     }
-    return;
+    return undefined;
   }
   ui.notify(message, "info");
+  return file;
 }
 
 async function pickProvider(ui: PimUi, file: ModelsFile): Promise<string | undefined> {
@@ -94,8 +105,7 @@ export async function wizardDeleteModels(ui: PimUi, ctx: RegistryCtx, file: Mode
   const ok = await ui.confirm(tr.confirmDeleteModels, tr.confirmDeleteModelsMsg(selected.length, name, selected));
   if (!ok) return;
   await writeProviderBackup(file, name);
-  await persistFile(ui, ctx, deleteModels(file, name, selected), tr.deletedModels(selected.length, name));
-}
+  await persistFile(ui, ctx, deleteModels(file, name, selected), tr.deletedModels(selected.length, name));}
 
 export async function wizardEditModels(ui: PimUi, ctx: RegistryCtx, file: ModelsFile): Promise<void> {
   const tr = t();

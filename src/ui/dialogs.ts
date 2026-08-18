@@ -219,7 +219,7 @@ export async function overlayMultiSelect(
           width,
           title,
           body,
-          footer: `space toggle • a visible • h hidden • enter ${checked.size} • esc cancel`,
+          footer: `space toggle • ctrl+a visible • ctrl+h hidden • enter ${checked.size} • esc cancel`,
         });
       },
       handleInput: (data: string) => {
@@ -256,12 +256,12 @@ export async function overlayMultiSelect(
           tui.requestRender();
           return;
         }
-        if (data === "a" && !filter) {
+        if (matchesKey(data, Key.ctrl("a"))) {
           for (const item of list) checked.add(item.value);
           tui.requestRender();
           return;
         }
-        if (data === "h" && !filter) {
+        if (matchesKey(data, Key.ctrl("h"))) {
           showHidden = !showHidden;
           tui.requestRender();
           return;

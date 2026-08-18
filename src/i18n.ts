@@ -29,10 +29,8 @@ export interface Strings {
   viewTitle: string;
   viewNoProviders: string;
   viewNoModels: (name: string) => string;
-  viewDeleteProvider: string;
   viewDeleteModels: string;
   viewBack: string;
-  viewProviderLabel: (name: string, count: number) => string;
 
   // provider creation
   inputProviderName: string;
@@ -56,6 +54,7 @@ export interface Strings {
   groupAnotherKey: string;
   groupAnotherKeyMsg: string;
   groupSameUrl: string;
+  groupSkipped: (providerId: string) => string;
 
   // catalog fetch
   fetchingModels: (api: string, baseUrl: string) => string;
@@ -187,10 +186,8 @@ const en: Strings = {
   viewTitle: "Existing providers & models",
   viewNoProviders: "No providers in models.json",
   viewNoModels: (name) => `${name} has no models`,
-  viewDeleteProvider: "Delete this provider",
   viewDeleteModels: "Delete models…",
   viewBack: "Back",
-  viewProviderLabel: (name, count) => `${name} (${count} model${count !== 1 ? "s" : ""})`,
 
   inputProviderName: "Provider name",
   errNameFormat: "Name must match [A-Za-z][A-Za-z0-9_-]{0,31}",
@@ -211,6 +208,7 @@ const en: Strings = {
   groupAnotherKey: "Add another key/group?",
   groupAnotherKeyMsg: "Same URL, different API key for different model group?",
   groupSameUrl: "Using same URL as previous group",
+  groupSkipped: (providerId) => `Skipped ${providerId}: provider already exists and merge was declined`,
 
   fetchingModels: (api, baseUrl) => `Fetching ${api} models…`,
   noModelsReturned: "No models returned by this API",
@@ -332,10 +330,8 @@ const zh: Strings = {
   viewTitle: "已有 provider 及模型",
   viewNoProviders: "models.json 中没有 provider",
   viewNoModels: (name) => `${name} 没有模型`,
-  viewDeleteProvider: "删除此 provider",
   viewDeleteModels: "删除模型…",
   viewBack: "返回",
-  viewProviderLabel: (name, count) => `${name}（${count} 个模型）`,
 
   inputProviderName: "Provider 名称",
   errNameFormat: "名称须匹配 [A-Za-z][A-Za-z0-9_-]{0,31}",
@@ -356,6 +352,7 @@ const zh: Strings = {
   groupAnotherKey: "添加另一个 key/分组？",
   groupAnotherKeyMsg: "同一 URL，不同 API key 对应不同模型分组？",
   groupSameUrl: "使用与上一分组相同的 URL",
+  groupSkipped: (providerId) => `已跳过 ${providerId}：provider 已存在且未选择合并`,
 
   fetchingModels: (api) => `正在拉取 ${api} 模型…`,
   noModelsReturned: "此 API 未返回模型",
