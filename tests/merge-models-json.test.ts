@@ -23,7 +23,7 @@ const elyBefore: ModelsFile = {
     ELY: {
       name: "ELY",
       api: "openai-completions",
-      baseUrl: "https://elysiver.h-e.top/v1",
+      baseUrl: "https://relay.example.com/v1",
       apiKey: "sk-test",
       compat: {
         supportsDeveloperRole: false,
@@ -53,7 +53,7 @@ describe("applyDrafts multi-api", () => {
         draft({
           id: "claude-opus-5",
           api: "anthropic-messages",
-          baseUrl: "https://elysiver.h-e.top",
+          baseUrl: "https://relay.example.com",
           compat: { forceAdaptiveThinking: true },
         }),
       ],
@@ -69,7 +69,7 @@ describe("applyDrafts multi-api", () => {
     assert.equal(claude?.compat?.thinkingFormat, undefined);
     assert.equal(claude?.api, "anthropic-messages");
     assert.equal(ds?.api, "openai-completions");
-    assert.equal(ds?.baseUrl, "https://elysiver.h-e.top/v1");
+    assert.equal(ds?.baseUrl, "https://relay.example.com/v1");
     assert.equal(p.api, undefined);
     assert.equal(p.baseUrl, undefined);
   });
@@ -78,7 +78,7 @@ describe("applyDrafts multi-api", () => {
     const result = applyDrafts(elyBefore, {
       providerId: "ELY",
       mode: "merge",
-      drafts: [draft({ id: "deepseek-v4-flash-0731", api: "anthropic-messages", baseUrl: "https://elysiver.h-e.top" })],
+      drafts: [draft({ id: "deepseek-v4-flash-0731", api: "anthropic-messages", baseUrl: "https://relay.example.com" })],
     });
     assert.deepEqual(result.skippedConflicts, ["deepseek-v4-flash-0731"]);
     const kept = result.file.providers.ELY.models?.[0];
@@ -94,7 +94,7 @@ describe("applyDrafts multi-api", () => {
         draft({
           id: "deepseek-v4-flash-0731",
           api: "openai-completions",
-          baseUrl: "https://elysiver.h-e.top/v1",
+          baseUrl: "https://relay.example.com/v1",
           replaceExisting: true,
           contextWindow: 12,
         }),
@@ -178,7 +178,7 @@ describe("delete provider / models", () => {
     const withTwo = applyDrafts(elyBefore, {
       providerId: "ELY",
       mode: "merge",
-      drafts: [draft({ id: "claude-opus-5", api: "anthropic-messages", baseUrl: "https://elysiver.h-e.top" })],
+      drafts: [draft({ id: "claude-opus-5", api: "anthropic-messages", baseUrl: "https://relay.example.com" })],
     }).file;
     const next = deleteModels(withTwo, "ELY", ["claude-opus-5"]);
     const ids = next.providers.ELY.models?.map((m) => m.id);
