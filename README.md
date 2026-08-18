@@ -313,6 +313,33 @@ npm test          # Node ≥ 22, --experimental-strip-types
 Load a checkout: `pi --extension /absolute/path/to/pi-models`.
 Design notes: [docs/SPEC.md](docs/SPEC.md).
 
+### Publishing
+
+Skip npm entirely if you only need the extension locally:
+
+```sh
+pi install git:github.com/palmtom316/pi-models
+```
+
+For [pi.dev/packages](https://pi.dev/packages) the package must be on npm. This repo uses
+[trusted publishing](https://docs.npmjs.com/trusted-publishers) — no local `npm login`,
+OTP, or long-lived token. One-time setup:
+
+1. Open [package settings](https://www.npmjs.com/package/@palmtom/pi-models) → **Trusted Publisher**.
+2. GitHub Actions: user `palmtom316`, repo `pi-models`, workflow filename `publish.yml`.
+3. Allow **npm publish**.
+
+After that, a release is just a version bump + tag:
+
+```sh
+# edit package.json version, then:
+git add package.json && git commit -m "Bump version to x.y.z"
+git tag vx.y.z
+git push && git push origin vx.y.z
+```
+
+GitHub Actions runs tests and `npm publish`. To publish the current `main` without a new tag: **Actions → Publish Package → Run workflow**.
+
 ---
 
 ## 中文
@@ -585,6 +612,32 @@ npm test          # Node ≥ 22，--experimental-strip-types
 
 加载本地 checkout：`pi --extension /absolute/path/to/pi-models`。
 设计文档：[docs/SPEC.md](docs/SPEC.md)。
+
+### 发布
+
+只要自用可以完全不走 npm：
+
+```sh
+pi install git:github.com/palmtom316/pi-models
+```
+
+要上 [pi.dev/packages](https://pi.dev/packages) 必须发到 npm。本仓库用
+[Trusted Publishing](https://docs.npmjs.com/trusted-publishers)，本地不再 `npm login` / OTP / token。一次性配置：
+
+1. 打开 [包设置](https://www.npmjs.com/package/@palmtom/pi-models) → **Trusted Publisher**。
+2. GitHub Actions：用户 `palmtom316`，仓库 `pi-models`，workflow 文件名 `publish.yml`。
+3. 勾选 **npm publish**。
+
+之后发布只要改版本号 + 打 tag：
+
+```sh
+# 改 package.json version 后：
+git add package.json && git commit -m "Bump version to x.y.z"
+git tag vx.y.z
+git push && git push origin vx.y.z
+```
+
+GitHub Actions 会跑测试并 `npm publish`。要发当前 `main`（不新打 tag）：**Actions → Publish Package → Run workflow**。
 
 ## License
 
