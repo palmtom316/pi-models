@@ -6,8 +6,8 @@ on:
       - "v*"
   workflow_dispatch:
 
-# OIDC for npm trusted publishing. Do not set registry-url / NODE_AUTH_TOKEN:
-# setup-node would inject a dummy token and npm would skip OIDC (E404).
+# OIDC for npm trusted publishing. Do not set setup-node registry-url:
+# that injects NODE_AUTH_TOKEN=XXXXX-... and npm skips OIDC.
 permissions:
   id-token: write
   contents: read
@@ -26,7 +26,47 @@ jobs:
           package-manager-cache: false
       - run: npm ci
       - run: npm test
-      - name: Publish to npm
+      - name: Show publish identity
         run: |
-          unset NODE_AUTH_TOKEN NPM_TOKEN
+          echo "repository=$GITHUB_REPOSITORY"
+          echo "workflow=$GITHUB_WORKFLOW"
+          echo "workflow_ref=$GITHUB_WORKFLOW_REF"
+          echo "event=$GITHUB_EVENT_NAME"
+          echo "ref=$GITHUB_REF"
+          echo "oidc_url=${ACTIONS_ID_TOKEN_REQUEST_URL:+set}"
+          echo "oidc_token=${ACTIONS_ID_TOKEN_REQUEST_TOKEN:+set}"
+          if [ -z "$ACTIONS_ID_TOKEN_REQUEST_URL" ]; then
+            echo "::warning::GitHub OIDC env is missing. Check workflow permissions.id-token: write"
+            exit 0
+          fi
+          node <<'NODE'
+          const url = process.env.ACTIONS_ID_TOKEN_REQUEST_URL + "&audience=npm:registry.npmjs.org";
+          const res = await fetch(url, { headers: { Authorization: "Bearer " + process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN } });
+          if (!res.ok) {
+            console.log("oidc_exchange_status=" + res.status);
+            console.log(await res.text());
+            process.exit(0);
+          }
+          const jwt = (await res.json()).value;
+          const payload = JSON.parse(Buffer.from(jwt.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"), "base64").toString());
+          console.log(JSON.stringify({
+            aud: payload.aud,
+            sub: payload.sub,
+            repository: payload.repository,
+            job_workflow_ref: payload.job_workflow_ref,
+            event_name: payload.event_name,
+            ref: payload.ref
+          }, null, 2));
+          NODE
+      - name: Publish to npm
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          unset NODE_AUTH_TOKEN
+          if [ -n "$NPM_TOKEN" ]; then
+            echo "Using GitHub secret NPM_TOKEN"
+            echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" >> "$HOME/.npmrc"
+          else
+            echo "Using GitHub OIDC trusted publishing (no NPM_TOKEN secret)"
+          fi
           npm publish --access public
