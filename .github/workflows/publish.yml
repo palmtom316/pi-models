@@ -26,37 +26,48 @@ jobs:
           package-manager-cache: false
       - run: npm ci
       - run: npm test
-      - name: Show publish identity
+      - name: Probe npm OIDC exchange
         run: |
           echo "repository=$GITHUB_REPOSITORY"
-          echo "workflow=$GITHUB_WORKFLOW"
           echo "workflow_ref=$GITHUB_WORKFLOW_REF"
           echo "event=$GITHUB_EVENT_NAME"
-          echo "ref=$GITHUB_REF"
-          echo "oidc_url=${ACTIONS_ID_TOKEN_REQUEST_URL:+set}"
-          echo "oidc_token=${ACTIONS_ID_TOKEN_REQUEST_TOKEN:+set}"
-          if [ -z "$ACTIONS_ID_TOKEN_REQUEST_URL" ]; then
-            echo "::warning::GitHub OIDC env is missing. Check workflow permissions.id-token: write"
-            exit 0
-          fi
           node <<'NODE'
-          const url = process.env.ACTIONS_ID_TOKEN_REQUEST_URL + "&audience=npm:registry.npmjs.org";
-          const res = await fetch(url, { headers: { Authorization: "Bearer " + process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN } });
-          if (!res.ok) {
-            console.log("oidc_exchange_status=" + res.status);
-            console.log(await res.text());
+          const ghUrl = process.env.ACTIONS_ID_TOKEN_REQUEST_URL + "&audience=" + encodeURIComponent("npm:registry.npmjs.org");
+          const gh = await fetch(ghUrl, { headers: { Authorization: "Bearer " + process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN } });
+          if (!gh.ok) {
+            console.log("github_oidc_status=" + gh.status);
+            console.log(await gh.text());
             process.exit(0);
           }
-          const jwt = (await res.json()).value;
+          const jwt = (await gh.json()).value;
           const payload = JSON.parse(Buffer.from(jwt.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"), "base64").toString());
-          console.log(JSON.stringify({
+          console.log("github_claims=" + JSON.stringify({
             aud: payload.aud,
             sub: payload.sub,
             repository: payload.repository,
             job_workflow_ref: payload.job_workflow_ref,
             event_name: payload.event_name,
-            ref: payload.ref
+            environment: payload.environment || null
           }, null, 2));
+          const pkg = encodeURIComponent("@palmtom/pi-models");
+          const urls = [
+            "https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/" + pkg,
+            "https://registry.npmjs.org/-/npm/v1/oidc/token/" + pkg,
+            "https://registry.npmjs.org/-/v1/oidc/token/exchange/" + pkg
+          ];
+          for (const url of urls) {
+            const res = await fetch(url, {
+              method: "POST",
+              headers: {
+                Authorization: "Bearer " + jwt,
+                Accept: "application/json",
+                "Content-Type": "application/json"
+              }
+            });
+            const body = await res.text();
+            console.log("npm_exchange " + res.status + " " + url);
+            console.log(body.slice(0, 800));
+          }
           NODE
       - name: Publish to npm
         env:
@@ -65,7 +76,7 @@ jobs:
           unset NODE_AUTH_TOKEN
           if [ -n "$NPM_TOKEN" ]; then
             echo "Using GitHub secret NPM_TOKEN"
-            echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" >> "$HOME/.npmrc"
+            printf '%s\n' "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > "$HOME/.npmrc"
           else
             echo "Using GitHub OIDC trusted publishing (no NPM_TOKEN secret)"
           fi
