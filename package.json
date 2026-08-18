@@ -1,6 +1,6 @@
 {
   "name": "@palmtom/pi-models",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Pi TUI overlay wizard: add a relay or self-hosted gateway as a provider, fetch /models, and write models.json",
   "keywords": [
     "pi-package",
