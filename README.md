@@ -101,7 +101,7 @@ Main menu (Esc goes back one layer; Esc / **Exit** on this menu closes `/pim`):
 
 ### New provider
 
-1. **Name** — must match `^[A-Za-z][A-Za-z0-9_-]{0,31}$`. Builtin ids (`openai`,
+1. **Name** — must match `^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$`. Builtin ids (`openai`,
    `anthropic`, `google`, `cc-switch-*`, …) require a second confirm, because that
    would override a builtin provider.
 2. **API type** (default `openai-completions` is right for most relays):
@@ -422,7 +422,7 @@ pi --extension /absolute/path/to/pi-models
 
 ### 新建 provider
 
-1. **名称** — 须匹配 `^[A-Za-z][A-Za-z0-9_-]{0,31}$`。撞内置 id（`openai`、
+1. **名称** — 须匹配 `^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$`。撞内置 id（`openai`、
    `anthropic`、`google`、`cc-switch-*` 等）会二次确认，因为那会覆盖内置 provider。
 2. **API 类型**（多数中转选默认 `openai-completions` 即可）：
 

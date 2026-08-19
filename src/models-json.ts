@@ -426,7 +426,10 @@ export async function rollbackModelsFile(backupPath?: string, path = getModelsJs
 }
 
 export function providerNameOk(name: string): boolean {
-  return /^[A-Za-z][A-Za-z0-9_-]{0,31}$/.test(name);
+  // First char may be a letter or a digit; subsequent chars may also use
+  // `_` / `-`. We avoid a leading `-` (so generated group suffixes like
+  // `-2` stay unambiguous) and a leading `_` (uncommon, kept out for parity).
+  return /^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$/.test(name);
 }
 
 export const BUILTIN_PROVIDER_IDS = new Set([

@@ -190,7 +190,7 @@ const en: Strings = {
   viewBack: "Back",
 
   inputProviderName: "Provider name",
-  errNameFormat: "Name must match [A-Za-z][A-Za-z0-9_-]{0,31}",
+  errNameFormat: "Name must match [A-Za-z0-9][A-Za-z0-9_-]{0,31}",
   builtinName: "Built-in name",
   builtinNameConfirm: (s) => `${s} is a built-in / reserved provider id. Override it?`,
   existsMerge: "Exists",
@@ -334,7 +334,7 @@ const zh: Strings = {
   viewBack: "返回",
 
   inputProviderName: "Provider 名称",
-  errNameFormat: "名称须匹配 [A-Za-z][A-Za-z0-9_-]{0,31}",
+  errNameFormat: "名称须匹配 [A-Za-z0-9][A-Za-z0-9_-]{0,31}",
   builtinName: "内置名称",
   builtinNameConfirm: (s) => `${s} 是内置 / 保留 provider id。要覆盖吗？`,
   existsMerge: "已存在",

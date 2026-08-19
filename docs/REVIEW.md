@@ -365,7 +365,7 @@ WONG 的 `deepseek-ai/deepseek-v4-flash-0731` 走 1→去前缀→去 `-0731`→
 4. **URL**：拒 userinfo；剥 hash/query；自动发现若以后做，非用户输入的非 loopback fail-closed（现规格没有自动发现，保持这样）。
 5. **schema 失败回滚**，不要留半截文件。
 6. **`$ENV` / `!command`**：Pi 已支持。首版可在确认屏加一项「写成 `$FOO` 而不是字面量」，默认仍字面量（符合用户习惯）。不要做「读当前环境反写」。
-7. **Provider 名**：限制 `^[A-Za-z][A-Za-z0-9_-]{0,31}$`，避免空格、中文、和内置 id（`openai`/`anthropic`/`google`/`cc-switch-*`）撞车。撞内置名必须二次确认：那是「覆盖内置 provider」，不是「新建中转站」。
+7. **Provider 名**：限制 `^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$`，避免空格、中文、和内置 id（`openai`/`anthropic`/`google`/`cc-switch-*`）撞车。撞内置名必须二次确认：那是「覆盖内置 provider」，不是「新建中转站」。
 
 ---
 

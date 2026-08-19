@@ -159,9 +159,15 @@ describe("sinkThinkingCompat", () => {
 });
 
 describe("names", () => {
-  it("accepts ELY and rejects spaces / builtin clash", () => {
+  it("accepts ELY, numeric names, and rejects spaces / builtin clash", () => {
     assert.equal(providerNameOk("ELY"), true);
+    assert.equal(providerNameOk("123"), true);
+    assert.equal(providerNameOk("1abc"), true);
+    assert.equal(providerNameOk("abc-1_2"), true);
     assert.equal(providerNameOk("my provider"), false);
+    assert.equal(providerNameOk("-abc"), false);
+    assert.equal(providerNameOk("_abc"), false);
+    assert.equal(providerNameOk(""), false);
     assert.equal(clashesBuiltin("openai"), true);
     assert.equal(clashesBuiltin("cc-switch-claude"), true);
     assert.equal(clashesBuiltin("ELY"), false);

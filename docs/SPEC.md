@@ -77,7 +77,7 @@ Provider
 
 流程：先 name + key，再循环「选 api + 填 url → 拉模型 → 多选」，直到用户说做完。
 
-Provider 名：`^[A-Za-z][A-Za-z0-9_-]{0,31}$`。撞内置 id（`openai`、`anthropic`、`google`、`cc-switch-*` 等）必须二次确认：那是覆盖内置 provider。
+Provider 名：`^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$`。撞内置 id（`openai`、`anthropic`、`google`、`cc-switch-*` 等）必须二次确认：那是覆盖内置 provider。
 
 ### 5.2 写入形状
 
