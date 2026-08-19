@@ -5,8 +5,9 @@ on:
     tags:
       - "v*"
 
-# OIDC for npm trusted publishing. Do not set setup-node registry-url:
-# that injects NODE_AUTH_TOKEN=XXXXX-... and npm skips OIDC.
+# Prefer npm trusted publishing (OIDC). Do not set setup-node registry-url:
+# that injects NODE_AUTH_TOKEN and npm skips OIDC. If the package has no
+# Trusted Publisher on npmjs.com, fall back to the NPM_TOKEN secret.
 permissions:
   id-token: write
   contents: read
@@ -36,6 +37,16 @@ jobs:
       - run: npm ci
       - run: npm test
       - name: Publish to npm
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           unset NODE_AUTH_TOKEN
-          npm publish --access public
+          if ! npm publish --access public; then
+            if [ -z "$NPM_TOKEN" ]; then
+              echo "npm publish failed (OIDC) and NPM_TOKEN is not set"
+              exit 1
+            fi
+            echo "OIDC trusted publishing failed; retrying with NPM_TOKEN"
+            printf '%s\n' "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > "$HOME/.npmrc"
+            npm publish --access public
+          fi
