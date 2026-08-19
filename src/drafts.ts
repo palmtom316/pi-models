@@ -1,4 +1,4 @@
-import { heuristicCaps, modelCompatFromMatch, NODE_UA, thinkingLevelMapFromOfficial } from "./defaults.ts";
+import { heuristicCaps, modelCompatFromMatch, NODE_UA, officialInput, thinkingLevelMapFromOfficial } from "./defaults.ts";
 import { matchOfficial, type MatchOfficialOptions } from "./match.ts";
 import type { CatalogItem } from "./catalog.ts";
 import type { ModelDraft, OfficialCatalog, PiApi } from "./types.ts";
@@ -15,7 +15,7 @@ export function buildDraft(
   const heur = heuristicCaps(item.id);
 
   const reasoning = official?.reasoning ?? heur.reasoning;
-  const input = official?.modalities?.input?.includes("image") ? (["text", "image"] as const) : heur.input;
+  const input = officialInput(official, heur.input);
   const contextWindow = official?.limit?.context ?? heur.contextWindow;
   const maxTokens = official?.limit?.output ?? heur.maxTokens;
   const thinkingLevelMap = official ? thinkingLevelMapFromOfficial(official) : heur.thinkingLevelMap;

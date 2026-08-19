@@ -47,6 +47,13 @@ export function wrapInPimWindow(
     });
 }
 
+function isAbortError(error: unknown): boolean {
+  if (!error) return false;
+  if (error instanceof DOMException && error.name === "AbortError") return true;
+  if (error instanceof Error && (error.name === "AbortError" || /aborted/i.test(error.message))) return true;
+  return false;
+}
+
 export async function overlayLoader<T>(
   ctx: OverlayCtx,
   title: string,
@@ -59,9 +66,11 @@ export async function overlayLoader<T>(
     work(loader.signal)
       .then(done)
       .catch((error) => {
-        const message = error instanceof Error ? error.message : String(error);
         done(fallback);
-        ctx.ui.notify(message, "error");
+        if (!isAbortError(error)) {
+          const message = error instanceof Error ? error.message : String(error);
+          ctx.ui.notify(message, "error");
+        }
       });
     return {
       render: (width: number) => {

@@ -1,6 +1,7 @@
-import { mkdir, open, readdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { PROVIDER_COMPAT } from "./defaults.ts";
+import { withFileLock } from "./lock.ts";
 import { backupName, getModelsJsonPath, getProviderBackupDir, getProviderBackupPath, providerBackupId } from "./paths.ts";
 import type { ModelDraft, ModelRecord, ModelsFile, ProviderRecord } from "./types.ts";
 import { isOpenAiApi } from "./types.ts";
@@ -41,11 +42,15 @@ const PROVIDER_KEYS = new Set([
 const THINKING_SINK_KEYS = ["thinkingFormat", "requiresReasoningContentOnAssistantMessages"] as const;
 
 export function emptyModelsFile(): ModelsFile {
-  return { providers: {} };
+  return { providers: emptyRecord() };
+}
+
+function emptyRecord<T>(): Record<string, T> {
+  return Object.create(null) as Record<string, T>;
 }
 
 export function parseModelsFile(text: string): ModelsFile {
-  const parsed = JSON.parse(stripJsonComments(text)) as unknown;
+  const parsed = JSON.parse(stripJsonc(text)) as unknown;
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error("models.json must be an object");
   }
@@ -53,10 +58,15 @@ export function parseModelsFile(text: string): ModelsFile {
   if (!providers || typeof providers !== "object" || Array.isArray(providers)) {
     throw new Error("models.json.providers must be an object");
   }
-  return parsed as ModelsFile;
+  const out = emptyRecord<ProviderRecord>();
+  for (const [id, provider] of Object.entries(providers as Record<string, ProviderRecord>)) {
+    out[id] = provider;
+  }
+  return { providers: out };
 }
 
-function stripJsonComments(text: string): string {
+/** Strip line comments, block comments, and trailing commas, leaving string literals untouched. */
+export function stripJsonc(text: string): string {
   let out = "";
   let quote = false;
   let escaped = false;
@@ -90,6 +100,11 @@ function stripJsonComments(text: string): string {
       i++;
       continue;
     }
+    if (ch === ",") {
+      let j = i + 1;
+      while (j < text.length && /[ \t\r\n]/.test(text[j]!)) j++;
+      if (text[j] === "}" || text[j] === "]") continue;
+    }
     out += ch;
   }
   return out;
@@ -106,7 +121,7 @@ export async function readModelsFile(path = getModelsJsonPath()): Promise<Models
 }
 
 function pick<T extends Record<string, unknown>>(obj: T, allowed: Set<string>): T {
-  const out: Record<string, unknown> = {};
+  const out = emptyRecord<unknown>();
   for (const [k, v] of Object.entries(obj)) {
     if (allowed.has(k) && v !== undefined) out[k] = v;
   }
@@ -126,8 +141,8 @@ export function sanitizeProvider(provider: ProviderRecord): ProviderRecord {
 }
 
 export function sanitizeFile(file: ModelsFile): ModelsFile {
-  const providers: Record<string, ProviderRecord> = {};
-  for (const [id, provider] of Object.entries(file.providers)) {
+  const providers = emptyRecord<ProviderRecord>();
+  for (const [id, provider] of Object.entries(file.providers ?? emptyRecord<ProviderRecord>())) {
     providers[id] = sanitizeProvider(provider);
   }
   return { providers };
@@ -247,6 +262,32 @@ export interface MergeResult {
   sunkThinking: boolean;
 }
 
+function copyProviders(source: Record<string, ProviderRecord> | undefined): Record<string, ProviderRecord> {
+  const out = emptyRecord<ProviderRecord>();
+  for (const [id, provider] of Object.entries(source ?? emptyRecord<ProviderRecord>())) {
+    out[id] = provider;
+  }
+  return out;
+}
+
+function collapseDrafts(drafts: ModelDraft[]): { drafts: ModelDraft[]; skippedConflicts: string[] } {
+  const byId = new Map<string, ModelDraft>();
+  const skippedConflicts: string[] = [];
+  for (const draft of drafts) {
+    const prev = byId.get(draft.id);
+    if (!prev) {
+      byId.set(draft.id, draft);
+      continue;
+    }
+    if (draft.replaceExisting) {
+      byId.set(draft.id, draft);
+      continue;
+    }
+    skippedConflicts.push(draft.id);
+  }
+  return { drafts: [...byId.values()], skippedConflicts };
+}
+
 export function applyDrafts(file: ModelsFile, opts: MergeOptions): MergeResult {
   const existing = file.providers[opts.providerId] ?? { name: opts.name ?? opts.providerId, models: [] };
   let provider: ProviderRecord = {
@@ -254,7 +295,7 @@ export function applyDrafts(file: ModelsFile, opts: MergeOptions): MergeResult {
     name: opts.name ?? existing.name ?? opts.providerId,
     models: [...(existing.models ?? [])],
   };
-  if (opts.apiKey) provider.apiKey = opts.apiKey;
+  if (opts.apiKey !== undefined) provider.apiKey = opts.apiKey;
 
   const incomingApis = [...new Set(opts.drafts.map((d) => d.api))];
   const sunkThinking = needsThinkingSink(provider, incomingApis);
@@ -274,15 +315,10 @@ export function applyDrafts(file: ModelsFile, opts: MergeOptions): MergeResult {
     replaced = before - models.length;
   }
 
-  const skippedConflicts: string[] = [];
-  const incomingIds = new Set<string>();
+  const collapsed = collapseDrafts(opts.drafts);
+  const skippedConflicts = [...collapsed.skippedConflicts];
   let added = 0;
-  for (const draft of opts.drafts) {
-    if (incomingIds.has(draft.id)) {
-      skippedConflicts.push(draft.id);
-      continue;
-    }
-    incomingIds.add(draft.id);
+  for (const draft of collapsed.drafts) {
     const idx = models.findIndex((m) => m.id === draft.id);
     const rec = draftToRecord(draft);
     if (idx >= 0) {
@@ -312,12 +348,9 @@ export function applyDrafts(file: ModelsFile, opts: MergeOptions): MergeResult {
   else if (bases.size === 1) provider.baseUrl = [...bases][0];
 
   provider.models = models;
-  const next: ModelsFile = {
-    providers: {
-      ...file.providers,
-      [opts.providerId]: sanitizeProvider(provider),
-    },
-  };
+  const nextProviders = copyProviders(file.providers);
+  nextProviders[opts.providerId] = sanitizeProvider(provider);
+  const next: ModelsFile = { providers: nextProviders };
   return {
     file: sanitizeFile(next),
     added,
@@ -345,66 +378,50 @@ export async function rotateBackups(dir: string, keep = KEEP_BACKUPS): Promise<v
   }
 }
 
-export async function writeModelsFile(file: ModelsFile, path = getModelsJsonPath()): Promise<{ backupPath?: string }> {
+async function replaceModelsFileUnlocked(file: ModelsFile, path: string): Promise<{ backupPath?: string }> {
   const clean = sanitizeFile(file);
   const json = `${JSON.stringify(clean, null, 2)}\n`;
   await mkdir(dirname(path), { recursive: true });
-  const release = await acquireWriteLock(path);
+  let backupPath: string | undefined;
   try {
-    let backupPath: string | undefined;
-    try {
-      const current = await readFile(path);
-      backupPath = join(dirname(path), backupName());
-      await writeFile(backupPath, current, { mode: FILE_MODE });
-    } catch (error) {
-      const err = error as NodeJS.ErrnoException;
-      if (err.code !== "ENOENT") throw error;
-    }
-
-    const tmp = `${path}.tmp-${process.pid}`;
-    try {
-      await writeFile(tmp, json, { encoding: "utf8", mode: FILE_MODE });
-      await rename(tmp, path);
-    } catch (error) {
-      try { await unlink(tmp); } catch { /* best effort */ }
-      throw error;
-    }
-    await rotateBackups(dirname(path));
-    return { backupPath };
-  } finally {
-    await release();
+    const current = await readFile(path);
+    backupPath = join(dirname(path), backupName());
+    await writeFile(backupPath, current, { mode: FILE_MODE });
+  } catch (error) {
+    const err = error as NodeJS.ErrnoException;
+    if (err.code !== "ENOENT") throw error;
   }
+
+  const tmp = `${path}.tmp-${process.pid}`;
+  try {
+    await writeFile(tmp, json, { encoding: "utf8", mode: FILE_MODE });
+    await rename(tmp, path);
+  } catch (error) {
+    try { await unlink(tmp); } catch { /* best effort */ }
+    throw error;
+  }
+  await rotateBackups(dirname(path));
+  return { backupPath };
 }
 
-async function acquireWriteLock(path: string): Promise<() => Promise<void>> {
-  const lockPath = `${path}.lock`;
-  const deadline = Date.now() + 5_000;
-  while (true) {
-    try {
-      const handle = await open(lockPath, "wx", FILE_MODE);
-      await handle.close();
-      return async () => { try { await unlink(lockPath); } catch { /* best effort */ } };
-    } catch (error) {
-      const err = error as NodeJS.ErrnoException;
-      if (err.code !== "EEXIST") throw error;
-      try {
-        if (Date.now() - (await stat(lockPath)).mtimeMs > 30_000) {
-          await unlink(lockPath);
-          continue;
-        }
-      } catch (staleError) {
-        if ((staleError as NodeJS.ErrnoException).code !== "ENOENT") throw staleError;
-        continue;
-      }
-      if (Date.now() >= deadline) throw new Error(`models.json is locked by another pim process: ${lockPath}`);
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
-  }
+export async function writeModelsFile(file: ModelsFile, path = getModelsJsonPath()): Promise<{ backupPath?: string }> {
+  return withFileLock(path, () => replaceModelsFileUnlocked(file, path));
+}
+
+export async function mutateModelsFile(
+  mutate: (file: ModelsFile) => ModelsFile | Promise<ModelsFile>,
+  path = getModelsJsonPath(),
+): Promise<{ file: ModelsFile; backupPath?: string }> {
+  return withFileLock(path, async () => {
+    const current = await readModelsFile(path);
+    const next = await mutate(current);
+    const { backupPath } = await replaceModelsFileUnlocked(next, path);
+    return { file: sanitizeFile(next), backupPath };
+  });
 }
 
 export async function rollbackModelsFile(backupPath?: string, path = getModelsJsonPath()): Promise<void> {
-  const release = await acquireWriteLock(path);
-  try {
+  await withFileLock(path, async () => {
     if (!backupPath) {
       try { await unlink(path); } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
@@ -420,9 +437,7 @@ export async function rollbackModelsFile(backupPath?: string, path = getModelsJs
       try { await unlink(tmp); } catch { /* best effort */ }
       throw error;
     }
-  } finally {
-    await release();
-  }
+  });
 }
 
 export function providerNameOk(name: string): boolean {
@@ -469,7 +484,7 @@ export function clashesBuiltin(id: string): boolean {
 }
 
 export function deleteProvider(file: ModelsFile, providerId: string): ModelsFile {
-  const providers = { ...file.providers };
+  const providers = copyProviders(file.providers);
   delete providers[providerId];
   return sanitizeFile({ providers });
 }
@@ -482,9 +497,9 @@ export function deleteModels(file: ModelsFile, providerId: string, ids: string[]
     ...provider,
     models: (provider.models ?? []).filter((m) => !drop.has(m.id)),
   };
-  return sanitizeFile({
-    providers: { ...file.providers, [providerId]: next },
-  });
+  const providers = copyProviders(file.providers);
+  providers[providerId] = next;
+  return sanitizeFile({ providers });
 }
 
 export function replaceModelRecords(file: ModelsFile, providerId: string, records: ModelRecord[]): ModelsFile {
@@ -496,9 +511,9 @@ export function replaceModelRecords(file: ModelsFile, providerId: string, record
     if (!next) return m;
     return { ...next, cost: m.cost };
   });
-  return sanitizeFile({
-    providers: { ...file.providers, [providerId]: { ...provider, models } },
-  });
+  const providers = copyProviders(file.providers);
+  providers[providerId] = { ...provider, models };
+  return sanitizeFile({ providers });
 }
 
 export async function writeProviderBackup(file: ModelsFile, providerId: string): Promise<string> {

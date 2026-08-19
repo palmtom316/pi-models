@@ -44,7 +44,7 @@ multi-select models, and get official capability parameters — ready for `/mode
 - **Manage & view** — backup / delete a provider, delete selected models, edit
   already-written capabilities (or reset to builtin / heuristic), browse what is
   in `models.json` today.
-- **Safe writes** — atomic tmp+rename, mode `0600`, rotating backups,
+- **Safe writes** — lock-file guarded read-modify-write, atomic tmp+rename, mode `0600`, rotating backups,
   `modelRegistry.refresh()` with automatic rollback offer if Pi rejects the file.
 - **Bilingual UI** — English ↔ 中文, switchable in the menu, persisted.
 
@@ -53,7 +53,7 @@ This package writes **your** `models.json`. It does not talk to CC-Switch — th
 
 ### Requirements
 
-- Pi **≥ 0.84.2** and Node **≥ 22**
+- Pi **≥ 0.84.2** and Node **≥ 22.19.0**
 - Interactive TUI only — print / json / rpc modes refuse to write anything
 
 ### Install
@@ -299,7 +299,10 @@ Respects `PI_CODING_AGENT_DIR` (default `~/.pi/agent`):
   Esc-cancellable.
 - Notify / logs / errors redact `Authorization`, `apiKey`, and `sk-…` values.
 - Writes are guarded by a lock file, atomic (tmp + rename), and rolled back if
-  Pi's `modelRegistry.refresh()` reports an error.
+  Pi's `modelRegistry.refresh()` reports an error. Mutations re-read `models.json`
+  under the lock so concurrent `/pim` sessions keep each other's providers.
+  Existing `$ENV` / `!command` apiKey references are left in place unless the
+  provider has no key yet. Trailing-comma JSONC that Pi itself accepts is also parsed.
 - Keys in `models.json` are as plaintext as Pi already stores them — treat
   backups as secret copies.
 
@@ -307,7 +310,7 @@ Respects `PI_CODING_AGENT_DIR` (default `~/.pi/agent`):
 
 ```sh
 npm install
-npm test          # Node ≥ 22, --experimental-strip-types
+npm test          # Node ≥ 22.19.0, --experimental-strip-types
 ```
 
 Load a checkout: `pi --extension /absolute/path/to/pi-models`.
@@ -341,7 +344,7 @@ git tag vx.y.z
 git push && git push origin vx.y.z
 ```
 
-GitHub Actions runs tests and `npm publish`. To publish the current `main` without a new tag: **Actions → Publish Package → Run workflow**.
+GitHub Actions runs tests and `npm publish`. The tag must be `v` plus the `package.json` version.
 
 ---
 
@@ -366,7 +369,7 @@ GitHub Actions runs tests and `npm publish`. To publish the current `main` witho
   只有在主菜单按 Esc / **退出** 才关闭 `/pim`。顺序是先查看，再新建 / 追加 / 管理。
 - **管理与查看** — 备份 / 删除 provider、多选删模型、编辑已写入的能力
   （或重置为内置 / 启发式）、浏览当前 `models.json` 内容。
-- **安全写入** — 原子 tmp+rename、权限 `0600`、滚动备份、写后
+- **安全写入** — 锁内重读后再合并、原子 tmp+rename、权限 `0600`、滚动备份、写后
   `modelRegistry.refresh()`，Pi 拒绝时一键回滚。
 - **中英双语界面** — 菜单一键切换，持久保存。
 
@@ -375,7 +378,7 @@ GitHub Actions runs tests and `npm publish`. To publish the current `main` witho
 
 ### 环境要求
 
-- Pi **≥ 0.84.2**，Node **≥ 22**
+- Pi **≥ 0.84.2**，Node **≥ 22.19.0**
 - 仅交互式 TUI 可用 —— print / json / rpc 模式一律拒绝写盘
 
 ### 安装
@@ -603,14 +606,15 @@ provider 上移除 —— 否则新加的 Claude 行会继承 `thinkingFormat: "
 - 目录响应体限流（2 MB；models.dev 8 MB），20 秒 / 30 秒超时，loader 可 Esc 取消。
 - 通知 / 日志 / 报错中的 `Authorization`、`apiKey`、`sk-…` 一律脱敏。
 - 写盘有锁文件保护、原子替换（tmp + rename），`modelRegistry.refresh()`
-  报错时支持回滚。
+  报错时支持回滚。锁内会重读 `models.json`，并发 `/pim` 会保留对方的 provider。
+  已有 `$ENV` / `!command` 引用不会被目录请求的临时密钥覆盖。Pi 可以解析的尾逗号 JSONC 也能读。
 - `models.json` 里的 key 与 Pi 本来的存储一样是明文 —— 请把备份当机密文件对待。
 
 ### 开发
 
 ```sh
 npm install
-npm test          # Node ≥ 22，--experimental-strip-types
+npm test          # Node ≥ 22.19.0，--experimental-strip-types
 ```
 
 加载本地 checkout：`pi --extension /absolute/path/to/pi-models`。
@@ -643,7 +647,7 @@ git tag vx.y.z
 git push && git push origin vx.y.z
 ```
 
-GitHub Actions 会跑测试并 `npm publish`。要发当前 `main`（不新打 tag）：**Actions → Publish Package → Run workflow**。
+GitHub Actions 会跑测试并 `npm publish`。tag 必须是 `v` 加上 `package.json` 的版本号。
 
 ## License
 

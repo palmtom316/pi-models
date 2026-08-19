@@ -3,10 +3,10 @@ import {
   deleteProvider,
   draftToRecord,
   listExistingProviders,
+  mutateModelsFile,
   readModelsFile,
   replaceModelRecords,
   rollbackModelsFile,
-  writeModelsFile,
   writeProviderBackup,
 } from "./models-json.ts";
 import { recordToDraft } from "./caps.ts";
@@ -30,11 +30,11 @@ export type RegistryCtx = {
 export async function persistFile(
   ui: PimUi,
   ctx: RegistryCtx,
-  file: ModelsFile,
+  mutate: (file: ModelsFile) => ModelsFile,
   message: string,
 ): Promise<ModelsFile | undefined> {
   const tr = t();
-  const { backupPath } = await writeModelsFile(file);
+  const { file, backupPath } = await mutateModelsFile(mutate);
   await ctx.modelRegistry.refresh();
   const err = ctx.modelRegistry.getError();
   if (err) {
@@ -81,7 +81,7 @@ export async function wizardDeleteProvider(ui: PimUi, ctx: RegistryCtx, file: Mo
   const ok = await ui.confirm(tr.confirmDeleteProvider, tr.confirmDeleteProviderMsg(name, count));
   if (ok !== true) return;
   const backup = await writeProviderBackup(file, name);
-  await persistFile(ui, ctx, deleteProvider(file, name), tr.deletedProvider(name, backup));
+  await persistFile(ui, ctx, (current) => deleteProvider(current, name), tr.deletedProvider(name, backup));
 }
 
 export async function wizardDeleteModels(ui: PimUi, ctx: RegistryCtx, file: ModelsFile): Promise<void> {
@@ -105,7 +105,7 @@ export async function wizardDeleteModels(ui: PimUi, ctx: RegistryCtx, file: Mode
   const ok = await ui.confirm(tr.confirmDeleteModels, tr.confirmDeleteModelsMsg(selected.length, name, selected));
   if (ok !== true) return;
   await writeProviderBackup(file, name);
-  await persistFile(ui, ctx, deleteModels(file, name, selected), tr.deletedModels(selected.length, name));
+  await persistFile(ui, ctx, (current) => deleteModels(current, name, selected), tr.deletedModels(selected.length, name));
 }
 
 export async function wizardEditModels(ui: PimUi, ctx: RegistryCtx, file: ModelsFile): Promise<void> {
@@ -136,7 +136,7 @@ export async function wizardEditModels(ui: PimUi, ctx: RegistryCtx, file: Models
     if (!edited) return;
     records.push(draftToRecord(edited));
   }
-  await persistFile(ui, ctx, replaceModelRecords(file, name, records), tr.editModelsTitle(name));
+  await persistFile(ui, ctx, (current) => replaceModelRecords(current, name, records), tr.editModelsTitle(name));
 }
 
 export async function runManageMenu(ui: PimUi, ctx: RegistryCtx): Promise<void> {

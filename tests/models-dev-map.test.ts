@@ -119,6 +119,26 @@ describe("modelCompatFromMatch", () => {
     });
     assert.equal(compat?.forceAdaptiveThinking, true);
   });
+
+  it("does not treat a Claude 4 date suffix as a 4.6+ minor version", () => {
+    const compat = modelCompatFromMatch("anthropic-messages", {
+      kind: "official",
+      bucket: "anthropic",
+      officialId: "claude-sonnet-4-20250514",
+      official: { id: "claude-sonnet-4-20250514", family: "claude-sonnet" },
+    });
+    assert.equal(compat?.forceAdaptiveThinking, undefined);
+  });
+
+  it("does not treat Claude 3.5 as a 4.6+ adaptive model", () => {
+    const compat = modelCompatFromMatch("anthropic-messages", {
+      kind: "official",
+      bucket: "anthropic",
+      officialId: "claude-3-5-sonnet",
+      official: { id: "claude-3-5-sonnet", family: "claude" },
+    });
+    assert.equal(compat?.forceAdaptiveThinking, undefined);
+  });
 });
 
 describe("buildDraft", () => {
@@ -139,5 +159,23 @@ describe("buildDraft", () => {
   it("does not write cost", () => {
     const draft = buildDraft({ id: "gpt-5.6-sol" }, "openai-completions", "https://x/v1", catalog);
     assert.equal("cost" in draft, false);
+  });
+
+  it("keeps official text-only modalities instead of heuristic image input", () => {
+    const remote: OfficialCatalog = {
+      openai: {
+        id: "openai",
+        models: {
+          "o3-mini": {
+            id: "o3-mini",
+            reasoning: true,
+            modalities: { input: ["text"] },
+            limit: { context: 200_000, output: 100_000 },
+          },
+        },
+      },
+    };
+    const draft = buildDraft({ id: "o3-mini" }, "openai-completions", "https://x/v1", remote);
+    assert.deepEqual(draft.input, ["text"]);
   });
 });

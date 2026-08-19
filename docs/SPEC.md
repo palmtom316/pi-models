@@ -24,7 +24,7 @@
 - 不把 models.dev 转售副本当权威。价格一律忽略。
 - 首版不管理 `auth.json` / `/login`。Key 写入 provider 的 `apiKey`。
 - 首版不做跨 provider 的模型市场，也不从 models.dev 反向安装官方 OpenAI。
-- 首版不同 API 不能用不同 key；那种情况提示拆成两个 provider。
+- 同一 provider 的多条 API 共用一把 key。同一中转 URL 配多把 key 时写成 `NAME`、`NAME-2`、`NAME-3` 分组。
 - 不把匹配元数据写进 `models.json`（schema 会拒未知字段）。
 
 ## 3. 结论摘要
@@ -47,6 +47,7 @@
   - 备份 → `{agentDir}/models.json.bak-YYYYMMDD-HHMMSS-mmm`
   - models.dev 缓存 → `{agentDir}/cache/models.dev.json`
   - sidecar（无密钥）→ `{agentDir}/pim-models.json`
+- 读盘支持 Pi 可接受的 JSONC：`//` / 块注释以及对象 / 数组尾逗号。写出仍是标准 JSON。
 - 支持的 `api`（首版）：
 
   | 值 | 典型用途 | 默认目录 |
@@ -57,7 +58,7 @@
   | `anthropic-messages` | Claude 原生 | `{baseUrl}/v1/models` 然后 `{baseUrl}/models` |
   | `google-generative-ai` | Gemini 原生 | 先试 OpenAI 兼容 `{baseUrl}/models` |
 
-- 一个 provider 一把 `apiKey`。多条 API 共用。模型级不存 key。
+- 一个 provider 一把 `apiKey`。同一 provider 的多条 API 共用。模型级不存 key。不同 key 写成独立分组 provider。
 - 非 TUI（`ctx.mode !== "tui"`，含 print / json / rpc）：命令失败、不写盘。不要用 `ctx.hasUI`（RPC 下为 true）。
 
 ## 5. 核心数据模型
@@ -186,7 +187,7 @@ Provider 名：`^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$`。撞内置 id（`openai`、`a
 
 窗口：所有对话框（菜单 / 单多选 / 输入 / 密码 / loader）都渲染在 **70% 的 pi-agent 窗口** overlay 内（`width`/`maxHeight` 均为 `"70%"`，`anchor: center`）。随终端 resize 动态重算高度（`floor(rows*0.7)`），配色全部走 pi-agent 的 theme token（`accent`/`muted`/`border`/`selectedBg` 等）。
 
-安装：`pi install npm:pi-models`（发布后）或 `pi install git:github.com/palmtom316/pi-models`。
+安装：`pi install npm:@palmtom/pi-models`（发布后）或 `pi install git:github.com/palmtom316/pi-models`。
 
 ```text
 /pim-models
@@ -244,7 +245,7 @@ Provider 名：`^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$`。撞内置 id（`openai`、`a
 - 默认 `User-Agent: node`。
 - 超时（建议 20s）+ `AbortSignal`。
 - 仅允许 HTTPS；HTTP 只允许 localhost / `127.0.0.1` / `::1`。拒 URL userinfo；剥 query / hash。
-- 不跟随跨 origin 3xx；同 origin 最多跟 1 次。
+- 不跟随重定向；3xx 作为失败展示，提示用户核对 URL。
 - body 边读边截：目录 2MB，models.dev 8MB。
 - 非 2xx：status + body 截断到 200 字。HTML 首页提示补 `/v1`，**不自动改 URL 重试写盘**。
 
@@ -428,12 +429,13 @@ UI 必须标明不是 models.dev。数字抄最近官方家族，不是权威。
 
 ## 10. 运行时生效
 
-1. 在目标文件同目录备份 `models.json` → `models.json.bak-YYYYMMDD-HHMMSS-mmm`（`0o600`）。只留最近 10 份。
-2. 同目录 tmp + `rename` 原子写，文件 `0o600`。
-3. `await ctx.modelRegistry.refresh()`。
-4. `ctx.modelRegistry.getError()` 非空：展示 + 备份路径，提供回滚；确认后恢复旧文件（首次创建则删除）并再次 `refresh()`，不 `setModel`。
-5. 新模型出现在 `/model`；选中后走该模型 `api` + `baseUrl`。
-6. 重启仍在（因为写了文件）。
+1. 获取 `{models.json}.lock`，锁内重读当前文件再应用 mutation（不要用锁外旧快照直接覆盖）。sidecar 同样锁内 merge。
+2. 在目标文件同目录备份 `models.json` → `models.json.bak-YYYYMMDD-HHMMSS-mmm`（`0o600`）。只留最近 10 份。
+3. 同目录 tmp + `rename` 原子写，文件 `0o600`。
+4. `await ctx.modelRegistry.refresh()`。
+5. `ctx.modelRegistry.getError()` 非空：展示 + 备份路径，提供回滚；确认后恢复旧文件（首次创建则删除）并再次 `refresh()`，不 `setModel`。
+6. 新模型出现在 `/model`；选中后走该模型 `api` + `baseUrl`。
+7. 重启仍在（因为写了文件）。
 
 不要 `registerProvider` 用户刚写的 provider。
 
@@ -495,7 +497,7 @@ pi-models/
 4. schema 未知字段：整文件 refresh 失败。只写白名单。
 5. WAF / 拒参：UA `node`；关 long cache。
 6. Gemini / Anthropic 目录不统一：失败则手输。
-7. 一把 key 多协议：不同 key 就拆 provider。
+7. 一把 key 多协议：同一 provider 共用 key；不同 key 写成 `NAME-2` 分组。
 8. 明文 key：与现状一致；写盘 `0600`；备份也是密钥副本，要轮转。
 9. `$ENV` / `!command`：确认屏可改写成 `$FOO`，默认仍字面量。
 

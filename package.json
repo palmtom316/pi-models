@@ -1,6 +1,6 @@
 {
   "name": "@palmtom/pi-models",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Pi TUI overlay wizard: add a relay or self-hosted gateway as a provider, fetch /models, and write models.json",
   "keywords": [
     "pi-package",
@@ -38,7 +38,7 @@
     "test": "node --experimental-strip-types --test tests/*.test.ts"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=22.19.0"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": ">=0.84.2 <1",

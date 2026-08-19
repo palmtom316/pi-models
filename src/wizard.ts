@@ -7,11 +7,12 @@ import {
   clashesBuiltin,
   deleteModels,
   listExistingProviders,
+  mutateModelsFile,
   providerNameOk,
   readModelsFile,
   rollbackModelsFile,
-  writeModelsFile,
   writeProviderBackup,
+  type MergeMode,
 } from "./models-json.ts";
 import { runManageMenu, persistFile } from "./manage.ts";
 import { enrichUnknownDrafts, resolveDrafts } from "./resolve.ts";
@@ -242,15 +243,17 @@ export async function draftsForApi(
 export async function persist(
   ctx: CmdCtx,
   ui: PimUi,
-  file: ModelsFile,
+  _file: ModelsFile,
   providerId: string,
   apiKey: string | undefined,
   drafts: ModelDraft[],
-  mode: "merge" | "replace-endpoint",
+  mode: MergeMode,
   pi?: { setModel: (model: unknown) => Promise<boolean> },
+  replace?: Array<{ api: string; baseUrl: string }>,
 ): Promise<ModelsFile | undefined> {
   const tr = t();
-  if (drafts.length === 0) {
+  const replacing = mode === "replace-endpoint" && (replace?.length ?? 0) > 0;
+  if (drafts.length === 0 && !replacing) {
     ui.notify(tr.nothingToWrite, "warning");
     return undefined;
   }
@@ -258,15 +261,18 @@ export async function persist(
     ui.notify(tr.errDraftMissingEndpoint, "error");
     return undefined;
   }
-  const summary = drafts
-    .map((d) => `${d.id}  ${d.api}`)
-    .slice(0, 12)
-    .join("\n");
+  const summary = drafts.length
+    ? drafts.map((d) => `${d.id}  ${d.api}`).slice(0, 12).join("\n")
+    : (replace ?? []).map((r) => `${r.api}  ${r.baseUrl}`).slice(0, 12).join("\n");
   const ok = await ui.confirm(tr.confirmWriteTitle, `${tr.confirmWriteMsg(drafts.length, providerId)}\n${summary}`);
   if (ok !== true) return undefined;
 
-  const merged = applyDrafts(file, { providerId, apiKey, drafts, mode });
-  const { backupPath } = await writeModelsFile(merged.file);
+  let merged!: ReturnType<typeof applyDrafts>;
+  const { file, backupPath } = await mutateModelsFile((current) => {
+    const persistKey = current.providers[providerId]?.apiKey ? undefined : apiKey;
+    merged = applyDrafts(current, { providerId, apiKey: persistKey, drafts, mode, replace });
+    return merged.file;
+  });
   await ctx.modelRegistry.refresh();
   const err = ctx.modelRegistry.getError();
   if (err) {
@@ -283,7 +289,10 @@ export async function persist(
     }
     return undefined;
   }
-  const apis = [...new Set(drafts.map((d) => d.api))].join(", ");
+  const apis = [...new Set([
+    ...drafts.map((d) => d.api),
+    ...(replace ?? []).map((r) => r.api),
+  ])].join(", ");
   const conflictNote = merged.skippedConflicts.length;
   ui.notify(tr.addedModels(merged.added, merged.replaced, providerId, apis, conflictNote), "info");
   if (merged.sunkThinking) {
@@ -291,7 +300,7 @@ export async function persist(
   }
   await writeSidecar({
     lastProvider: providerId,
-    lastEndpoints: drafts.map((d) => ({ provider: providerId, api: d.api, baseUrl: d.baseUrl })),
+    lastEndpoints: (replace ?? drafts).map((d) => ({ provider: providerId, api: d.api, baseUrl: d.baseUrl })),
   });
   const first = drafts[0];
   if (first && pi) {
@@ -302,7 +311,7 @@ export async function persist(
       if (!okSwitch) ui.notify(tr.setModelFailed, "warning");
     }
   }
-  return merged.file;
+  return file;
 }
 
 export async function wizardNew(ctx: CmdCtx, ui: PimUi, file: ModelsFile, pi: { setModel: Function }): Promise<void> {
@@ -372,9 +381,9 @@ export async function wizardNew(ctx: CmdCtx, ui: PimUi, file: ModelsFile, pi: { 
     }
 
     // Write each group as a separate provider (name, name-2, name-3, …).
-    // persist() writes to disk and returns the merged file; chain each group's
-    // result so later groups build on earlier ones instead of overwriting them.
-    let current = file;
+    // persist() re-reads models.json under the write lock, so later groups
+    // always merge onto disk state instead of an earlier in-memory snapshot.
+    let current = await readModelsFile();
     for (const group of groups) {
       const providerId = `${name}${group.providerSuffix}`;
       if (current.providers[providerId]) {
@@ -384,17 +393,24 @@ export async function wizardNew(ctx: CmdCtx, ui: PimUi, file: ModelsFile, pi: { 
           continue;
         }
       }
-      const next = await persist(ctx, ui, current, providerId, group.apiKey, group.drafts, "merge", pi);
+      const persistKey = current.providers[providerId]?.apiKey ? undefined : group.apiKey;
+      const next = await persist(ctx, ui, current, providerId, persistKey, group.drafts, "merge", pi);
       if (next) current = next;
     }
     return;
   }
 }
 
-function storedApiKey(provider: { apiKey?: string } | undefined): string | undefined {
+function catalogApiKey(provider: { apiKey?: string } | undefined): string | undefined {
   const key = provider?.apiKey;
   if (!key || key.startsWith("$") || key.startsWith("!")) return undefined;
   return key;
+}
+
+function upsertDraft(list: ModelDraft[], draft: ModelDraft): void {
+  const idx = list.findIndex((item) => item.id === draft.id);
+  if (idx >= 0) list[idx] = draft;
+  else list.push(draft);
 }
 
 async function wizardAddApi(ctx: CmdCtx, ui: PimUi, file: ModelsFile, pi: { setModel: Function }): Promise<void> {
@@ -409,19 +425,19 @@ async function wizardAddApi(ctx: CmdCtx, ui: PimUi, file: ModelsFile, pi: { setM
     const name = await ui.select(tr.selectProvider, names);
     if (!name) return;
     const provider = file.providers[name];
-    const existingKey = storedApiKey(provider);
-    let typedKey = existingKey;
+    const storedKey = catalogApiKey(provider);
+    let catalogKey = storedKey;
 
     while (true) {
-      if (!typedKey) {
-        typedKey = await ui.secret(tr.secretApiKeyFor(name));
-        if (!typedKey) break;
+      if (!catalogKey) {
+        catalogKey = await ui.secret(tr.secretApiKeyFor(name));
+        if (!catalogKey) break;
       }
 
       const specs = await collectApis(ui);
       if (!specs) {
-        if (existingKey) break;
-        typedKey = undefined;
+        if (storedKey) break;
+        catalogKey = undefined;
         continue;
       }
 
@@ -429,13 +445,13 @@ async function wizardAddApi(ctx: CmdCtx, ui: PimUi, file: ModelsFile, pi: { setM
       const all: ModelDraft[] = [];
       let cancelled = false;
       for (const spec of specs) {
-        const drafts = await draftsForApi(ui, spec, typedKey, existing);
+        const drafts = await draftsForApi(ui, spec, catalogKey, existing);
         if (drafts === undefined) {
           cancelled = true;
           break;
         }
         for (const d of drafts) {
-          all.push(d);
+          upsertDraft(all, d);
           existing.add(d.id);
         }
       }
@@ -444,7 +460,8 @@ async function wizardAddApi(ctx: CmdCtx, ui: PimUi, file: ModelsFile, pi: { setM
       const modeChoice = await ui.select(tr.applyHowTitle, [tr.applyHowMerge, tr.applyHowReplace, tr.applyHowCancel]);
       if (!modeChoice || modeChoice === tr.applyHowCancel) return;
       const mode = modeChoice === tr.applyHowReplace ? "replace-endpoint" : "merge";
-      await persist(ctx, ui, file, name, existingKey ? undefined : typedKey, all, mode, pi);
+      const persistKey = provider?.apiKey ? undefined : catalogKey;
+      await persist(ctx, ui, file, name, persistKey, all, mode, pi, specs.map((spec) => ({ api: spec.api, baseUrl: spec.baseUrl })));
       return;
     }
   }
@@ -525,7 +542,7 @@ async function wizardDeleteModelsForProvider(ui: PimUi, ctx: CmdCtx, file: Model
   if (ok !== true) return;
 
   await writeProviderBackup(file, name);
-  await persistFile(ui, ctx, deleteModels(file, name, selected), tr.deletedModels(selected.length, name));
+  await persistFile(ui, ctx, (current) => deleteModels(current, name, selected), tr.deletedModels(selected.length, name));
 }
 
 async function wizardSwitchLang(ui: PimUi): Promise<void> {

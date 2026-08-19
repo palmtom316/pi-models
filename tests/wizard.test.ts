@@ -127,4 +127,50 @@ describe("wizard boundaries", () => {
       else process.env.PI_CODING_AGENT_DIR = previousDir;
     }
   });
+
+  it("does not persist a temporary catalog key over an existing $ENV apiKey", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pim-wizard-key-"));
+    const previousDir = process.env.PI_CODING_AGENT_DIR;
+    process.env.PI_CODING_AGENT_DIR = dir;
+    try {
+      const before: ModelsFile = {
+        providers: {
+          P: {
+            apiKey: "$P_KEY",
+            models: [{ id: "old", api: "openai-completions", baseUrl: "https://x/v1" }],
+          },
+        },
+      };
+      await writeFile(join(dir, "models.json"), JSON.stringify(before));
+      const ui = {
+        confirm: async () => true,
+        notify: () => undefined,
+      } as unknown as PimUi;
+      await persist({
+        mode: "tui",
+        ui: { notify: () => undefined, custom: () => undefined },
+        modelRegistry: {
+          refresh: async () => undefined,
+          getError: () => undefined,
+          find: () => undefined,
+        },
+      }, ui, before, "P", "temporary-catalog-key", [{
+        id: "new",
+        name: "new",
+        api: "openai-completions",
+        baseUrl: "https://x/v1",
+        reasoning: false,
+        input: ["text"],
+        contextWindow: 128_000,
+        maxTokens: 16_384,
+        match: { kind: "unmatched" },
+      }], "merge");
+      const written = JSON.parse(await readFile(join(dir, "models.json"), "utf8")) as ModelsFile;
+      assert.equal(written.providers.P.apiKey, "$P_KEY");
+      assert.equal(written.providers.P.models?.some((m) => m.id === "new"), true);
+    } finally {
+      if (previousDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+      else process.env.PI_CODING_AGENT_DIR = previousDir;
+    }
+  });
 });

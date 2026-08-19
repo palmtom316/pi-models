@@ -1,4 +1,4 @@
-import { heuristicCaps, thinkingLevelMapFromOfficial } from "./defaults.ts";
+import { heuristicCaps, officialInput, thinkingLevelMapFromOfficial } from "./defaults.ts";
 import { matchBuiltin } from "./resolve.ts";
 import type { ModelDraft, ModelRecord, ProviderRecord } from "./types.ts";
 
@@ -10,7 +10,7 @@ export function resetDraftCaps(draft: ModelDraft): ModelDraft {
       ...draft,
       name: official.name ?? draft.name,
       reasoning: official.reasoning ?? true,
-      input: official.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
+      input: officialInput(official),
       contextWindow: official.limit?.context ?? draft.contextWindow,
       maxTokens: official.limit?.output ?? draft.maxTokens,
       thinkingLevelMap: thinkingLevelMapFromOfficial(official),

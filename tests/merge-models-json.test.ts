@@ -3,7 +3,7 @@ import { access, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
-import { applyDrafts, clashesBuiltin, deleteModels, deleteProvider, parseModelsFile, providerNameOk, replaceModelRecords, rollbackModelsFile, sanitizeFile, sinkThinkingCompat, writeModelsFile, writeProviderBackup } from "../src/models-json.ts";
+import { applyDrafts, clashesBuiltin, deleteModels, deleteProvider, mutateModelsFile, parseModelsFile, providerNameOk, replaceModelRecords, rollbackModelsFile, rotateBackups, sanitizeFile, sinkThinkingCompat, writeModelsFile, writeProviderBackup } from "../src/models-json.ts";
 import type { ModelDraft, ModelsFile } from "../src/types.ts";
 
 function draft(partial: Partial<ModelDraft> & Pick<ModelDraft, "id" | "api" | "baseUrl">): ModelDraft {
@@ -106,6 +106,69 @@ describe("applyDrafts multi-api", () => {
     assert.equal(result.added, 0);
   });
 
+  it("lets a later same-batch replaceExisting draft win", () => {
+    const result = applyDrafts(elyBefore, {
+      providerId: "ELY",
+      mode: "merge",
+      drafts: [
+        draft({ id: "shared", api: "openai-completions", baseUrl: "https://relay.example.com/v1" }),
+        draft({
+          id: "shared",
+          api: "anthropic-messages",
+          baseUrl: "https://relay.example.com",
+          replaceExisting: true,
+        }),
+      ],
+    });
+    const kept = result.file.providers.ELY.models?.find((m) => m.id === "shared");
+    assert.equal(kept?.api, "anthropic-messages");
+    assert.equal(kept?.baseUrl, "https://relay.example.com");
+    assert.equal(result.added, 1);
+  });
+
+  it("clears an unused endpoint when replace targets are explicit", () => {
+    const file: ModelsFile = {
+      providers: {
+        P: {
+          apiKey: "k",
+          models: [
+            { id: "keep", api: "openai-completions", baseUrl: "https://a.example/v1" },
+            { id: "drop", api: "anthropic-messages", baseUrl: "https://b.example" },
+          ],
+        },
+      },
+    };
+    const result = applyDrafts(file, {
+      providerId: "P",
+      mode: "replace-endpoint",
+      drafts: [draft({ id: "new", api: "openai-completions", baseUrl: "https://a.example/v1" })],
+      replace: [
+        { api: "openai-completions", baseUrl: "https://a.example/v1" },
+        { api: "anthropic-messages", baseUrl: "https://b.example" },
+      ],
+    });
+    const ids = (result.file.providers.P.models ?? []).map((m) => m.id);
+    assert.deepEqual(ids, ["new"]);
+    assert.equal(result.replaced, 2);
+  });
+
+  it("does not overwrite an existing $ENV apiKey when no new key is supplied", () => {
+    const file: ModelsFile = {
+      providers: {
+        P: {
+          apiKey: "$P_KEY",
+          models: [{ id: "old", api: "openai-completions", baseUrl: "https://x/v1" }],
+        },
+      },
+    };
+    const result = applyDrafts(file, {
+      providerId: "P",
+      mode: "merge",
+      drafts: [draft({ id: "new", api: "openai-completions", baseUrl: "https://x/v1" })],
+    });
+    assert.equal(result.file.providers.P.apiKey, "$P_KEY");
+  });
+
   it("does not add User-Agent when it is disabled", () => {
     const result = applyDrafts({ providers: {} }, {
       providerId: "NO_UA",
@@ -128,6 +191,14 @@ describe("applyDrafts multi-api", () => {
     });
     assert.equal("_hub" in (dirty.providers.X.models?.[0] ?? {}), false);
   });
+
+  it("preserves a __proto__ provider id", () => {
+    const parsed = parseModelsFile('{"providers":{"__proto__":{"api":"openai-completions","baseUrl":"https://x/v1","apiKey":"k","models":[{"id":"m"}]}}}');
+    const clean = sanitizeFile(parsed);
+    assert.equal(Object.hasOwn(clean.providers, "__proto__"), true);
+    assert.equal(clean.providers.__proto__?.models?.[0]?.id, "m");
+    assert.equal(JSON.parse(JSON.stringify(clean)).providers.__proto__.models[0].id, "m");
+  });
 });
 
 describe("models.json parsing", () => {
@@ -139,6 +210,21 @@ describe("models.json parsing", () => {
       }
     }`);
     assert.equal(parsed.providers.X.baseUrl, "https://x.test/v1//models");
+  });
+
+  it("accepts trailing commas in providers, models, and objects", () => {
+    const parsed = parseModelsFile(`{
+      "providers": {
+        "X": {
+          "api": "openai-completions",
+          "baseUrl": "https://x.test/v1",
+          "models": [
+            { "id": "m", },
+          ],
+        },
+      },
+    }`);
+    assert.equal(parsed.providers.X.models?.[0]?.id, "m");
   });
 });
 
@@ -290,5 +376,37 @@ describe("writeModelsFile", () => {
     assert.equal(Object.keys(written.providers).length, 1);
     assert.equal(Boolean(written.providers.A || written.providers.B), true);
     await assert.rejects(access(`${path}.lock`));
+  });
+
+  it("keeps both providers when concurrent mutations re-read under the lock", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pim-models-"));
+    const path = join(dir, "models.json");
+    await writeFile(path, JSON.stringify({ providers: {} }));
+    await Promise.all([
+      mutateModelsFile((file) => {
+        file.providers.A = { models: [{ id: "a" }] };
+        return file;
+      }, path),
+      mutateModelsFile((file) => {
+        file.providers.B = { models: [{ id: "b" }] };
+        return file;
+      }, path),
+    ]);
+    const written = JSON.parse(await readFile(path, "utf8")) as ModelsFile;
+    assert.deepEqual(Object.keys(written.providers).sort(), ["A", "B"]);
+    await assert.rejects(access(`${path}.lock`));
+  });
+
+  it("rotates models.json backups down to the keep limit", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pim-bak-"));
+    for (let i = 0; i < 12; i++) {
+      const stamp = String(i).padStart(2, "0");
+      await writeFile(join(dir, `models.json.bak-20260819-0000${stamp}-000`), "{}");
+    }
+    await rotateBackups(dir, 10);
+    const leftover = (await (await import("node:fs/promises")).readdir(dir)).filter((n) => n.startsWith("models.json.bak-"));
+    leftover.sort();
+    assert.equal(leftover.length, 10);
+    assert.equal(leftover[0], "models.json.bak-20260819-000002-000");
   });
 });

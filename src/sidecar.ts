@@ -1,5 +1,6 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
+import { withFileLock } from "./lock.ts";
 import { getSidecarPath } from "./paths.ts";
 
 export interface Sidecar {
@@ -18,13 +19,22 @@ export async function readSidecar(path = getSidecarPath()): Promise<Sidecar> {
 }
 
 export async function writeSidecar(data: Sidecar, path = getSidecarPath()): Promise<void> {
-  const current = await readSidecar(path);
-  const safe: Sidecar = {
-    cacheFetchedAt: data.cacheFetchedAt ?? current.cacheFetchedAt,
-    lastProvider: data.lastProvider ?? current.lastProvider,
-    lastEndpoints: data.lastEndpoints ?? current.lastEndpoints,
-    lang: data.lang ?? current.lang,
-  };
-  await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, `${JSON.stringify(safe, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+  await withFileLock(path, async () => {
+    const current = await readSidecar(path);
+    const safe: Sidecar = {
+      cacheFetchedAt: data.cacheFetchedAt ?? current.cacheFetchedAt,
+      lastProvider: data.lastProvider ?? current.lastProvider,
+      lastEndpoints: data.lastEndpoints ?? current.lastEndpoints,
+      lang: data.lang ?? current.lang,
+    };
+    await mkdir(dirname(path), { recursive: true });
+    const tmp = `${path}.tmp-${process.pid}`;
+    try {
+      await writeFile(tmp, `${JSON.stringify(safe, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+      await rename(tmp, path);
+    } catch (error) {
+      try { await unlink(tmp); } catch { /* best effort */ }
+      throw error;
+    }
+  });
 }

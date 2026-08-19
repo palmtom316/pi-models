@@ -28,6 +28,26 @@ function hasToggle(options: OfficialModel["reasoning_options"]): boolean {
   return (options ?? []).some((o) => o.type === "toggle");
 }
 
+export function looksAdaptiveClaude(id: string): boolean {
+  // Modern ids are claude-{family}-{major}[-{minor}]; family must be alphabetic so
+  // legacy ids like claude-3-5-sonnet are not parsed as major=5.
+  const match = id.toLowerCase().match(/^claude-[a-z]+-(\d+)(?:-(\d+))?(?:-|$)/);
+  if (!match) return false;
+  const major = Number(match[1] ?? 0);
+  const minorRaw = match[2];
+  if (major >= 5) return true;
+  if (major !== 4 || !minorRaw) return false;
+  // Date suffixes such as 20250514 are not semantic minor versions.
+  if (minorRaw.length >= 4) return false;
+  return Number(minorRaw) >= 6;
+}
+
+export function officialInput(official?: OfficialModel, fallback: Array<"text" | "image"> = ["text"]): Array<"text" | "image"> {
+  const inputs = official?.modalities?.input;
+  if (!inputs) return [...fallback];
+  return inputs.includes("image") ? ["text", "image"] : ["text"];
+}
+
 export function interleavedField(model?: OfficialModel): string | undefined {
   const v = model?.interleaved;
   if (v && typeof v === "object" && typeof v.field === "string") return v.field;
@@ -78,11 +98,7 @@ export function modelCompatFromMatch(api: PiApi, hit: MatchHit): ModelCompat | u
 
   if (!isOpenAiApi(api)) {
     if (api === "anthropic-messages" && (bucket === "anthropic" || /claude/.test(id))) {
-      const version = id.match(/^claude-[a-z0-9]+-(\d+)(?:-(\d+))?(?:-|$)/);
-      const major = Number(version?.[1] ?? 0);
-      const minor = Number(version?.[2] ?? 0);
-      const looksAdaptive = major >= 5 || (major === 4 && minor >= 6);
-      if (looksAdaptive) {
+      if (looksAdaptiveClaude(id)) {
         return { forceAdaptiveThinking: true };
       }
     }
