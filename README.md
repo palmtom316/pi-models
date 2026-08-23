@@ -76,7 +76,8 @@ pi --extension /absolute/path/to/pi-models
 2. Pick **New provider** — name it, choose `openai-completions` for most relays,
    paste the base URL and one API key.
 3. The wizard fetches `GET {baseUrl}/models`, checks the official matches, and
-   opens a multi-select. Toggle with space, confirm with enter.
+   opens a multi-select. Toggle with space; use **Select all / Invert / Deselect all**
+   on the action bar (or `^A` / `^R` / `^U`); confirm with enter.
 4. Confirm the write. `models.json` is backed up, written, and Pi's model registry
    is refreshed — optionally jump straight to the first new model via `/model`.
 
@@ -122,6 +123,8 @@ Main menu (Esc goes back one layer; Esc / **Exit** on this menu closes `/pim`):
 5. **API key** (masked input) → fetch catalog → multi-select. Official matches are
    pre-checked; embeddings / TTS / image / video / realtime models are folded
    under "hidden by default"; ids that already exist elsewhere are flagged.
+   The list has **Select all / Invert / Deselect all** for currently visible rows
+   (`^A` / `^R` / `^U`, or the action bar above the list).
    Auth per protocol: `Authorization: Bearer` by default, plus `x-api-key` +
    `anthropic-version: 2023-06-01` for Anthropic, `x-goog-api-key` (no Bearer)
    for Google.
@@ -401,7 +404,7 @@ pi --extension /absolute/path/to/pi-models
 2. 选 **新建 provider** —— 起名，中转站一般选 `openai-completions`，
    粘贴 baseUrl 和一把 API key。
 3. 向导请求 `GET {baseUrl}/models`，预勾选官方匹配项，打开多选框：
-   空格勾选，回车确认。
+   空格勾选；顶部可 **全选 / 反选 / 全不选**（或 `^A` / `^R` / `^U`）；回车确认。
 4. 确认写入。`models.json` 先备份再写入并刷新模型注册表，可选直接切换到
    第一个新模型。
 
@@ -444,6 +447,7 @@ pi --extension /absolute/path/to/pi-models
 4. **`User-Agent: node`** — 可选，默认开启（很多 WAF 拦 `OpenAI/JS`）。
 5. **API key**（掩码输入）→ 拉目录 → 多选。官方匹配项预勾选；embedding /
    TTS / 图像 / 视频 / realtime 模型默认折叠；与已有 id 冲突的会打标。
+   列表顶部有 **全选 / 反选 / 全不选**（作用于当前可见项，快捷键 `^A` / `^R` / `^U`）。
    鉴权按协议：默认 `Authorization: Bearer`；Anthropic 另加 `x-api-key` +
    `anthropic-version: 2023-06-01`；Google 改用 `x-goog-api-key`（不发 Bearer）。
 6. 拉取失败会显示 HTTP 状态 + 脱敏后的 body；HTML 响应会建议补 `/v1`

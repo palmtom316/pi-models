@@ -1,6 +1,14 @@
-import { Input, Key, matchesKey, SelectList, truncateToWidth, type SelectItem } from "@earendil-works/pi-tui";
+import { Input, SelectList, truncateToWidth, type SelectItem } from "@earendil-works/pi-tui";
+import { t } from "../i18n.ts";
 import { pimCustom, termRows, type OverlayCtx } from "./overlay.ts";
 import { listTheme, renderPimWindow, type ThemeLike } from "./window.ts";
+import {
+  createMultiSelectSession,
+  handleMultiSelectInput,
+  syncWindow,
+  visibleItems,
+  type MultiSelectItem,
+} from "./multi-select.ts";
 
 function visibleCount(termRowsCount: number): number {
   return Math.max(4, targetBody(termRowsCount));
@@ -170,12 +178,15 @@ function maskLine(theme: ThemeLike, value: string, rendered: string, width: numb
   return truncateToWidth(`${prefix}${theme.fg(value ? "text" : "dim", bullets || "(hidden)")}`, width);
 }
 
-export interface MultiSelectItem {
-  value: string;
-  label: string;
-  description?: string;
-  checked?: boolean;
-  hiddenByDefault?: boolean;
+export type { MultiSelectItem };
+
+function paintBulkBar(theme: ThemeLike, labels: string[], activeIndex: number, focused: boolean, width: number): string {
+  const parts = labels.map((label, i) => {
+    const active = focused && i === activeIndex;
+    const mark = active ? `[${label}]` : ` ${label} `;
+    return active ? theme.bg("selectedBg", theme.fg("accent", mark)) : theme.fg("muted", mark);
+  });
+  return truncateToWidth(parts.join(" "), width);
 }
 
 export async function overlayMultiSelect(
@@ -184,41 +195,35 @@ export async function overlayMultiSelect(
   items: MultiSelectItem[],
 ): Promise<string[] | undefined> {
   return pimCustom<string[] | undefined>(ctx, (tui, theme, _kb, done) => {
-    const checked = new Set(items.filter((i) => i.checked).map((i) => i.value));
-    let filter = "";
-    let cursor = 0;
-    let showHidden = false;
-    let offset = 0;
-
-    const visible = () => {
-      const base = items.filter((i) => showHidden || !i.hiddenByDefault);
-      if (!filter) return base;
-      const q = filter.toLowerCase();
-      return base.filter((i) => i.label.toLowerCase().includes(q) || i.value.toLowerCase().includes(q));
-    };
+    const session = createMultiSelectSession(items);
 
     return {
       render: (width: number) => {
-        const list = visible();
+        const tr = t();
         const inner = Math.max(1, width - 2);
-        const maxVisible = Math.max(4, targetBody(termRows(tui)) - 2);
-        if (cursor >= list.length) cursor = Math.max(0, list.length - 1);
-        if (cursor < offset) offset = cursor;
-        if (cursor >= offset + maxVisible) offset = cursor - maxVisible + 1;
-        const slice = list.slice(offset, offset + maxVisible);
-        const body: string[] = [theme.fg("dim", filter ? `filter: ${filter}` : "type to filter")];
+        const maxVisible = Math.max(4, targetBody(termRows(tui)) - 3);
+        const visCount = visibleItems(session).length;
+        const slice = syncWindow(session, maxVisible);
+        const bulkLabels = [tr.multiSelectAll, tr.multiSelectInvert, tr.multiSelectNone];
+        const body: string[] = [
+          theme.fg("dim", tr.multiSelectFilter(session.filter)),
+          paintBulkBar(theme, bulkLabels, session.bulkIndex, session.focus === "bulk", inner),
+        ];
         if (slice.length === 0) body.push(theme.fg("warning", "no matches"));
         for (let i = 0; i < slice.length; i++) {
           const item = slice[i]!;
-          const abs = offset + i;
-          const mark = checked.has(item.value) ? "[x]" : "[ ]";
-          const prefix = abs === cursor ? "> " : "  ";
+          const abs = session.offset + i;
+          const mark = session.checked.has(item.value) ? "[x]" : "[ ]";
+          const listFocused = session.focus === "list" && abs === session.cursor;
+          const prefix = listFocused ? "> " : "  ";
           const desc = item.description ? `  ${item.description}` : "";
           const line = truncateToWidth(`${prefix}${mark} ${item.label}${desc}`, inner);
-          body.push(abs === cursor ? theme.bg("selectedBg", theme.fg("accent", line)) : line);
+          body.push(listFocused ? theme.bg("selectedBg", theme.fg("accent", line)) : line);
         }
-        if (list.length > maxVisible) {
-          body.push(theme.fg("dim", `${offset + 1}-${Math.min(offset + maxVisible, list.length)} / ${list.length}`));
+        if (visCount > maxVisible) {
+          body.push(
+            theme.fg("dim", `${session.offset + 1}-${Math.min(session.offset + maxVisible, visCount)} / ${visCount}`),
+          );
         }
         return renderPimWindow({
           theme,
@@ -226,64 +231,20 @@ export async function overlayMultiSelect(
           width,
           title,
           body,
-          footer: `space toggle • ctrl+a visible • ctrl+h hidden • enter ${checked.size} • esc back`,
+          footer: tr.multiSelectFooter(session.checked.size),
         });
       },
       handleInput: (data: string) => {
-        const list = visible();
-        if (matchesKey(data, Key.escape)) {
-          if (filter) {
-            filter = "";
-            tui.requestRender();
-            return;
-          }
+        const outcome = handleMultiSelectInput(session, data);
+        if (outcome === "cancel") {
           done(undefined);
           return;
         }
-        if (matchesKey(data, Key.enter)) {
-          done([...checked]);
+        if (outcome === "confirm") {
+          done([...session.checked]);
           return;
         }
-        if (matchesKey(data, Key.up)) {
-          cursor = Math.max(0, cursor - 1);
-          tui.requestRender();
-          return;
-        }
-        if (matchesKey(data, Key.down)) {
-          cursor = Math.min(Math.max(list.length - 1, 0), cursor + 1);
-          tui.requestRender();
-          return;
-        }
-        if (matchesKey(data, Key.space)) {
-          const item = list[cursor];
-          if (item) {
-            if (checked.has(item.value)) checked.delete(item.value);
-            else checked.add(item.value);
-          }
-          tui.requestRender();
-          return;
-        }
-        if (matchesKey(data, Key.ctrl("a"))) {
-          for (const item of list) checked.add(item.value);
-          tui.requestRender();
-          return;
-        }
-        if (matchesKey(data, Key.ctrl("h"))) {
-          showHidden = !showHidden;
-          tui.requestRender();
-          return;
-        }
-        if (matchesKey(data, Key.backspace)) {
-          filter = filter.slice(0, -1);
-          cursor = 0;
-          tui.requestRender();
-          return;
-        }
-        if (data.length === 1 && data.charCodeAt(0) >= 32 && data !== " ") {
-          filter += data;
-          cursor = 0;
-          tui.requestRender();
-        }
+        tui.requestRender();
       },
       invalidate() {},
     };

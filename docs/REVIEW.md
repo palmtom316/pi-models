@@ -308,7 +308,7 @@ SPEC 要写清：
 
 `SettingsList` 是改某一项的枚举值。`ctx.ui.select` 单选。站目录经常 50–200 个 id。
 
-需要自绘：过滤、空格勾选、全选可见项、官方命中置顶、embedding/tts/image/video 默认折叠。参考 `examples/extensions/questionnaire.ts` 的 custom UI，不要复用 SettingsList。
+需要自绘：过滤、空格勾选、全选/反选/全不选可见项、官方命中置顶、embedding/tts/image/video 默认折叠。参考 `examples/extensions/questionnaire.ts` 的 custom UI，不要复用 SettingsList。
 
 ### F16. 目录端点变体少了（P1）
 

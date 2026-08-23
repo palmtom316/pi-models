@@ -211,7 +211,7 @@ Provider 名：`^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$`。撞内置 id（`openai`、`a
        GET 目录（§7）
        先匹配内置常用表，未命中且用户勾选后再拉 models.dev（§8）
        标注：✓ builtin / ✓ official / ~ fuzzy / ? unmatched / ! conflict
-       自绘多选（过滤、空格勾选、全选可见项、官方置顶）
+       自绘多选（过滤、空格勾选、全选/反选/全不选可见项、官方置顶）
        embedding / tts / image / video / realtime 默认折叠
        拉失败：展示 status + 截断 body；可手输 id（逗号分隔）再匹配
   4. 能力编辑默认 skip（写入 id 仍是上游原样）

@@ -65,6 +65,11 @@ export interface Strings {
 
   // multi-select
   conflictLabel: string;
+  multiSelectAll: string;
+  multiSelectInvert: string;
+  multiSelectNone: string;
+  multiSelectFilter: (filter: string) => string;
+  multiSelectFooter: (count: number) => string;
 
   // models.dev
   lookingUp: (count: number) => string;
@@ -217,6 +222,12 @@ const en: Strings = {
   htmlSuggestV1: (url) => `Response looked like HTML. Try ${url}`,
 
   conflictLabel: "! conflict",
+  multiSelectAll: "Select all",
+  multiSelectInvert: "Invert",
+  multiSelectNone: "Deselect all",
+  multiSelectFilter: (filter) => (filter ? `filter: ${filter}` : "type to filter"),
+  multiSelectFooter: (count) =>
+    `space • ^A all • ^R invert • ^U none • ^H hidden • enter ${count} • esc`,
 
   lookingUp: (count) => `Looking up ${count} new model(s) on models.dev…`,
   modelsDevCatalog: (at) => `models.dev catalog: ${at}`,
@@ -361,6 +372,12 @@ const zh: Strings = {
   htmlSuggestV1: (url) => `响应看起来是 HTML。试试 ${url}`,
 
   conflictLabel: "! 冲突",
+  multiSelectAll: "全选",
+  multiSelectInvert: "反选",
+  multiSelectNone: "全不选",
+  multiSelectFilter: (filter) => (filter ? `过滤: ${filter}` : "输入过滤"),
+  multiSelectFooter: (count) =>
+    `空格 • ^A全选 • ^R反选 • ^U全不选 • ^H隐藏 • enter ${count} • esc`,
 
   lookingUp: (count) => `正在 models.dev 查询 ${count} 个新模型…`,
   modelsDevCatalog: (at) => `models.dev 目录：${at}`,
