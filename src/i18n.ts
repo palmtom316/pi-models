@@ -13,6 +13,7 @@ export interface Strings {
   menuAdd: string;
   menuManage: string;
   menuView: string;
+  menuSwitchDefault: string;
   menuRefresh: string;
   menuLang: (current: Lang) => string;
   menuExit: string;
@@ -109,6 +110,14 @@ export interface Strings {
   confirmSwitchModel: string;
   confirmSwitchModelMsg: (provider: string, id: string) => string;
   setModelFailed: string;
+  setDefaultFailed: string;
+  switchedDefault: (provider: string, id: string) => string;
+  defaultModelCurrent: (provider: string, id: string) => string;
+  defaultModelUnset: string;
+  selectDefaultModel: string;
+  noModelsAnywhere: string;
+  confirmSetDefault: string;
+  confirmSetDefaultMsg: (provider: string, id: string) => string;
 
   // add api
   noProvidersCreateFirst: string;
@@ -177,6 +186,7 @@ const en: Strings = {
   menuAdd: "Add API / models to existing provider",
   menuManage: "Manage: backup / delete / edit",
   menuView: "View existing providers & models",
+  menuSwitchDefault: "Switch default model",
   menuRefresh: "Refresh models.dev cache",
   menuLang: () => "Language: English",
   menuExit: "Exit",
@@ -264,6 +274,14 @@ const en: Strings = {
   confirmSwitchModel: "Switch model?",
   confirmSwitchModelMsg: (provider, id) => `Switch to ${provider}/${id}?`,
   setModelFailed: "setModel failed (missing key?)",
+  setDefaultFailed: "Could not write default model to settings.json",
+  switchedDefault: (provider, id) => `Default model is now ${provider}/${id}`,
+  defaultModelCurrent: (provider, id) => `Current default: ${provider}/${id}`,
+  defaultModelUnset: "No default model is set",
+  selectDefaultModel: "Default model",
+  noModelsAnywhere: "No models in models.json",
+  confirmSetDefault: "Set as default?",
+  confirmSetDefaultMsg: (provider, id) => `Save ${provider}/${id} as the startup default?\nWrites settings.json and switches this session.`,
 
   noProvidersCreateFirst: "No providers in models.json. Create one first.",
   selectProvider: "Provider",
@@ -327,6 +345,7 @@ const zh: Strings = {
   menuAdd: "给已有 provider 加 API / 模型",
   menuManage: "管理：备份 / 删除 / 编辑",
   menuView: "查看已有 provider 及模型",
+  menuSwitchDefault: "切换默认模型",
   menuRefresh: "刷新 models.dev 缓存",
   menuLang: (current) => current === "zh" ? "语言：中文" : "Language: English",
   menuExit: "退出",
@@ -414,6 +433,14 @@ const zh: Strings = {
   confirmSwitchModel: "切换模型？",
   confirmSwitchModelMsg: (provider, id) => `切换到 ${provider}/${id}？`,
   setModelFailed: "setModel 失败（缺少 key？）",
+  setDefaultFailed: "无法把默认模型写入 settings.json",
+  switchedDefault: (provider, id) => `默认模型已设为 ${provider}/${id}`,
+  defaultModelCurrent: (provider, id) => `当前默认：${provider}/${id}`,
+  defaultModelUnset: "尚未设置默认模型",
+  selectDefaultModel: "默认模型",
+  noModelsAnywhere: "models.json 中没有模型",
+  confirmSetDefault: "设为默认？",
+  confirmSetDefaultMsg: (provider, id) => `把 ${provider}/${id} 设为启动默认模型？\n会写入 settings.json 并切换当前会话。`,
 
   noProvidersCreateFirst: "models.json 中没有 provider。请先创建。",
   selectProvider: "Provider",

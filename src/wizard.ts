@@ -18,6 +18,7 @@ import { runManageMenu, persistFile } from "./manage.ts";
 import { enrichUnknownDrafts, resolveDrafts } from "./resolve.ts";
 import { canonicalizeUrl } from "./url.ts";
 import { writeSidecar } from "./sidecar.ts";
+import { readDefaultModelRef, readSettingsFile, writeDefaultModel } from "./settings.ts";
 import { PI_APIS, type ModelDraft, type ModelsFile, type PiApi } from "./types.ts";
 import { createPimUi, type PimUi } from "./ui/pim-ui.ts";
 import { FOOTER_SELECT_EXIT } from "./ui/dialogs.ts";
@@ -550,10 +551,95 @@ async function wizardSwitchLang(ui: PimUi): Promise<void> {
   await saveLang(next);
 }
 
+function modelChoiceValue(provider: string, id: string): string {
+  return `${provider}\0${id}`;
+}
+
+function parseModelChoice(value: string): { provider: string; id: string } | undefined {
+  const sep = value.indexOf("\0");
+  if (sep <= 0 || sep === value.length - 1) return undefined;
+  return { provider: value.slice(0, sep), id: value.slice(sep + 1) };
+}
+
+export async function wizardSwitchDefault(
+  ctx: CmdCtx,
+  ui: PimUi,
+  pi: { setModel: (model: unknown) => Promise<boolean> },
+): Promise<void> {
+  const tr = t();
+  const file = await readModelsFile();
+  const names = listExistingProviders(file);
+  if (names.length === 0) {
+    ui.notify(tr.noProvidersInFile, "warning");
+    return;
+  }
+  if (names.every((name) => (file.providers[name]?.models?.length ?? 0) === 0)) {
+    ui.notify(tr.noModelsAnywhere, "warning");
+    return;
+  }
+
+  const current = readDefaultModelRef(await readSettingsFile());
+  const subtitle = current
+    ? tr.defaultModelCurrent(current.provider, current.model)
+    : tr.defaultModelUnset;
+
+  while (true) {
+    const name = await ui.select(tr.selectProvider, [...names, tr.viewBack], subtitle);
+    if (!name || name === tr.viewBack) return;
+
+    const provider = file.providers[name];
+    const models = provider?.models ?? [];
+    if (models.length === 0) {
+      ui.notify(tr.noModels(name), "warning");
+      continue;
+    }
+
+    const options = models.map((m) => {
+      const mark = current?.provider === name && current.model === m.id ? " *" : "";
+      return {
+        value: modelChoiceValue(name, m.id),
+        label: `${m.id}${mark}`,
+      };
+    });
+    const labels = [...options.map((o) => o.label), tr.viewBack];
+    const choice = await ui.select(tr.selectDefaultModel, labels, subtitle);
+    if (!choice || choice === tr.viewBack) continue;
+
+    const picked = options.find((o) => o.label === choice);
+    const parsed = picked ? parseModelChoice(picked.value) : undefined;
+    if (!parsed) continue;
+    if (current?.provider === parsed.provider && current.model === parsed.id) {
+      ui.notify(tr.switchedDefault(parsed.provider, parsed.id), "info");
+      return;
+    }
+
+    const ok = await ui.confirm(
+      tr.confirmSetDefault,
+      tr.confirmSetDefaultMsg(parsed.provider, parsed.id),
+    );
+    if (ok !== true) continue;
+
+    try {
+      await writeDefaultModel(parsed.provider, parsed.id);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      ui.notify(`${tr.setDefaultFailed}\n${message}`, "error");
+      return;
+    }
+    ui.notify(tr.switchedDefault(parsed.provider, parsed.id), "info");
+
+    const model = ctx.modelRegistry.find(parsed.provider, parsed.id);
+    const okSwitch = model ? await pi.setModel(model) : false;
+    if (!okSwitch) ui.notify(tr.setModelFailed, "warning");
+    return;
+  }
+}
+
 export function mainMenuOptions(): string[] {
   const tr = t();
   return [
     tr.menuView,
+    tr.menuSwitchDefault,
     tr.menuNew,
     tr.menuAdd,
     tr.menuManage,
@@ -574,6 +660,10 @@ export async function runMainMenu(ctx: CmdCtx, ui: PimUi, pi: { setModel: Functi
     if (!action || action === exitLabel) return;
     if (action === tr.menuView) {
       await wizardViewProviders(ui, ctx);
+      continue;
+    }
+    if (action === tr.menuSwitchDefault) {
+      await wizardSwitchDefault(ctx, ui, pi);
       continue;
     }
     if (action === tr.menuNew) {

@@ -47,6 +47,7 @@
   - 备份 → `{agentDir}/models.json.bak-YYYYMMDD-HHMMSS-mmm`
   - models.dev 缓存 → `{agentDir}/cache/models.dev.json`
   - sidecar（无密钥）→ `{agentDir}/pim-models.json`
+  - 启动默认模型 → `{agentDir}/settings.json` 的 `defaultProvider` / `defaultModel`（锁内 merge，不覆盖其它字段）
 - 读盘支持 Pi 可接受的 JSONC：`//` / 块注释以及对象 / 数组尾逗号。写出仍是标准 JSON。
 - 支持的 `api`（首版）：
 
@@ -193,6 +194,7 @@ Provider 名：`^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$`。撞内置 id（`openai`、`a
 /pim-models
   1. 选动作（完成后回到本层；Esc 逐层返回，主菜单 Esc / 退出才关 overlay）
        查看已有 provider 及模型
+       切换默认模型（写入 settings.json 并 setModel 当前会话）
        新建 provider
        给已有 provider 加 API / 加模型
        管理：备份 / 删除 provider / 删除模型 / 编辑已写入能力
@@ -231,6 +233,11 @@ Provider 名：`^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$`。撞内置 id（`openai`、`a
        getError() 非空：展示错误 + 备份路径，提供回滚，不 setModel
        否则通知：写入 N 个模型，分属哪些 api
        可选切到第一个新模型（setModel 失败要提示）
+  6b. 切换默认模型
+       从 models.json 选 provider → 模型
+       锁内 merge 写入 settings.json 的 defaultProvider / defaultModel（保留其它字段）
+       再 setModel 切当前会话；setModel 失败要提示，但默认已经落盘
+       Extension API 没有 SettingsManager：当前进程里 /model 的 Ctrl+S 高亮仍可能是旧默认，下次启动读文件
 ```
 
 文案：中转站上 Claude / Gemini **更常走 `openai-completions`**。只有站点提供原生端点时才选 `anthropic-messages` / `google-generative-ai`。id 仍按官方桶匹配。
@@ -462,6 +469,7 @@ pi-models/
     fetch.ts
     url.ts
     sidecar.ts
+    settings.ts          # settings.json defaultProvider/defaultModel merge
     paths.ts
     types.ts
     ui/

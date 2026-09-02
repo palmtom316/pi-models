@@ -23,6 +23,10 @@ export function getSidecarPath(): string {
   return join(agentDir(), "pim-models.json");
 }
 
+export function getSettingsJsonPath(): string {
+  return join(agentDir(), "settings.json");
+}
+
 export function backupName(now = new Date()): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   const millis = String(now.getMilliseconds()).padStart(3, "0");

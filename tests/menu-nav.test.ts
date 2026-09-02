@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
@@ -7,7 +7,7 @@ import { setLang, t } from "../src/i18n.ts";
 import { runManageMenu } from "../src/manage.ts";
 import type { PimUi } from "../src/ui/pim-ui.ts";
 import { FOOTER_SELECT_EXIT } from "../src/ui/dialogs.ts";
-import { mainMenuOptions, runMainMenu, wizardNew, type CmdCtx } from "../src/wizard.ts";
+import { mainMenuOptions, runMainMenu, wizardNew, wizardSwitchDefault, type CmdCtx } from "../src/wizard.ts";
 
 function emptyCtx(): CmdCtx {
   return {
@@ -38,6 +38,7 @@ describe("main menu navigation", () => {
     setLang("en");
     assert.deepEqual(mainMenuOptions(), [
       t().menuView,
+      t().menuSwitchDefault,
       t().menuNew,
       t().menuAdd,
       t().menuManage,
@@ -247,6 +248,108 @@ describe("wizard step-back", () => {
       `confirm:${t().builtinName}`,
       `input:${t().inputProviderName}`,
     ]);
+  });
+});
+
+describe("switch default model", () => {
+  it("writes settings.json and calls setModel for the chosen model", async () => {
+    setLang("en");
+    await withAgentDir(async (dir) => {
+      await writeFile(join(dir, "models.json"), JSON.stringify({
+        providers: {
+          QQ: {
+            apiKey: "sk",
+            models: [
+              { id: "old", api: "openai-completions", baseUrl: "https://x/v1" },
+              { id: "glm", api: "openai-completions", baseUrl: "https://x/v1" },
+            ],
+          },
+        },
+      }));
+      await writeFile(join(dir, "settings.json"), JSON.stringify({
+        theme: "dark",
+        defaultProvider: "QQ",
+        defaultModel: "old",
+      }));
+      const found: string[] = [];
+      const switched: string[] = [];
+      const ctx: CmdCtx = {
+        ...emptyCtx(),
+        modelRegistry: {
+          refresh: async () => undefined,
+          getError: () => undefined,
+          find: (provider: string, id: string) => {
+            found.push(`${provider}/${id}`);
+            return { provider, id };
+          },
+        },
+      };
+      const ui = {
+        select: async (title: string, options: string[]) => {
+          if (title === t().selectProvider) return "QQ";
+          if (title === t().selectDefaultModel) return options.find((o) => o.startsWith("glm")) ?? "glm";
+          return undefined;
+        },
+        confirm: async () => true,
+        notify: () => undefined,
+      } as unknown as PimUi;
+      await wizardSwitchDefault(ctx, ui, {
+        setModel: async (model: { provider: string; id: string }) => {
+          switched.push(`${model.provider}/${model.id}`);
+          return true;
+        },
+      });
+      const settings = JSON.parse(await readFile(join(dir, "settings.json"), "utf8")) as {
+        theme: string;
+        defaultProvider: string;
+        defaultModel: string;
+      };
+      assert.equal(settings.theme, "dark");
+      assert.equal(settings.defaultProvider, "QQ");
+      assert.equal(settings.defaultModel, "glm");
+      assert.deepEqual(found, ["QQ/glm"]);
+      assert.deepEqual(switched, ["QQ/glm"]);
+    });
+  });
+
+  it("notifies when models.json has no providers", async () => {
+    setLang("en");
+    await withAgentDir(async () => {
+      const notices: string[] = [];
+      const ui = {
+        select: async () => {
+          throw new Error("should not open a selector");
+        },
+        notify: (message: string) => notices.push(message),
+      } as unknown as PimUi;
+      await wizardSwitchDefault(emptyCtx(), ui, { setModel: async () => false });
+      assert.deepEqual(notices, [t().noProvidersInFile]);
+    });
+  });
+
+  it("Esc on the provider list returns without writing settings", async () => {
+    setLang("en");
+    await withAgentDir(async (dir) => {
+      await writeFile(join(dir, "models.json"), JSON.stringify({
+        providers: {
+          QQ: { apiKey: "sk", models: [{ id: "m", api: "openai-completions", baseUrl: "https://x/v1" }] },
+        },
+      }));
+      await writeFile(join(dir, "settings.json"), JSON.stringify({
+        defaultProvider: "QQ",
+        defaultModel: "m",
+      }));
+      const ui = {
+        select: async () => undefined,
+        confirm: async () => {
+          throw new Error("should not confirm");
+        },
+        notify: () => undefined,
+      } as unknown as PimUi;
+      await wizardSwitchDefault(emptyCtx(), ui, { setModel: async () => false });
+      const settings = JSON.parse(await readFile(join(dir, "settings.json"), "utf8"));
+      assert.equal(settings.defaultModel, "m");
+    });
   });
 });
 

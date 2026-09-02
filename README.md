@@ -40,10 +40,10 @@ multi-select models, and get official capability parameters — ready for `/mode
   `deepseek-v4-flash` capabilities.
 - **Layered TUI** — Esc backs out one prompt at a time (name ← API ← URL ← key).
   Submenus return to the main menu; only Esc / **Exit** on the main menu closes
-  `/pim`. Browse first, then create / extend / manage.
+  `/pim`. Browse first, then switch the default, then create / extend / manage.
 - **Manage & view** — backup / delete a provider, delete selected models, edit
   already-written capabilities (or reset to builtin / heuristic), browse what is
-  in `models.json` today.
+  in `models.json` today, and switch the startup default model in `settings.json`.
 - **Safe writes** — lock-file guarded read-modify-write, atomic tmp+rename, mode `0600`, rotating backups,
   `modelRegistry.refresh()` with automatic rollback offer if Pi rejects the file.
 - **Bilingual UI** — English ↔ 中文, switchable in the menu, persisted.
@@ -92,13 +92,15 @@ pi --extension /absolute/path/to/pi-models
 Main menu (Esc goes back one layer; Esc / **Exit** on this menu closes `/pim`):
 
 1. **View** — browse existing providers and models; delete inline.
-2. **New provider** — name + one `api`/`baseUrl`, then loop API keys (model groups).
-3. **Add API / models** — attach another protocol/URL (or more models) to an
+2. **Switch default model** — pick a model from `models.json`, write it to
+   `settings.json` (`defaultProvider` / `defaultModel`), and switch this session.
+3. **New provider** — name + one `api`/`baseUrl`, then loop API keys (model groups).
+4. **Add API / models** — attach another protocol/URL (or more models) to an
    existing provider.
-4. **Manage** — backup / delete provider / delete models / edit capabilities.
-5. **Refresh models.dev cache** — force-fetch the latest official data.
-6. **Language** — English ↔ 中文.
-7. **Exit**
+5. **Manage** — backup / delete provider / delete models / edit capabilities.
+6. **Refresh models.dev cache** — force-fetch the latest official data.
+7. **Language** — English ↔ 中文.
+8. **Exit**
 
 ### New provider
 
@@ -369,9 +371,9 @@ GitHub Actions runs tests and `npm publish`. The tag must be `v` plus the `packa
 - **中转 id 归一化** — `deepseek-ai/deepseek-v4-flash-0731` 这类目录 id 保持
   上游原样写入（Pi 请求时原样发回），但能力抄自官方 `deepseek-v4-flash`。
 - **逐层返回** — Esc 只退一层（名称 ← API ← URL ← key）。子菜单结束后回到主菜单，
-  只有在主菜单按 Esc / **退出** 才关闭 `/pim`。顺序是先查看，再新建 / 追加 / 管理。
+  只有在主菜单按 Esc / **退出** 才关闭 `/pim`。顺序是先查看，再切默认，再新建 / 追加 / 管理。
 - **管理与查看** — 备份 / 删除 provider、多选删模型、编辑已写入的能力
-  （或重置为内置 / 启发式）、浏览当前 `models.json` 内容。
+  （或重置为内置 / 启发式）、浏览当前 `models.json` 内容、切换 `settings.json` 里的启动默认模型。
 - **安全写入** — 锁内重读后再合并、原子 tmp+rename、权限 `0600`、滚动备份、写后
   `modelRegistry.refresh()`，Pi 拒绝时一键回滚。
 - **中英双语界面** — 菜单一键切换，持久保存。
@@ -419,12 +421,14 @@ pi --extension /absolute/path/to/pi-models
 主菜单（Esc 逐层返回；在本层按 Esc / **退出** 才关闭 `/pim`）：
 
 1. **查看** — 浏览已有 provider 与模型，可直接删除。
-2. **新建 provider** — 名称 + 一条 `api`/`baseUrl`，然后循环输入 API key（模型分组）。
-3. **给已有 provider 加 API / 模型** — 在现有 provider 上追加协议/URL 或更多模型。
-4. **管理** — 备份 / 删除 provider / 删除模型 / 编辑能力。
-5. **刷新 models.dev 缓存** — 强制拉取最新官方数据。
-6. **语言** — English ↔ 中文。
-7. **退出**
+2. **切换默认模型** — 从 `models.json` 选一个模型，写入 `settings.json`
+   （`defaultProvider` / `defaultModel`），并切换当前会话。
+3. **新建 provider** — 名称 + 一条 `api`/`baseUrl`，然后循环输入 API key（模型分组）。
+4. **给已有 provider 加 API / 模型** — 在现有 provider 上追加协议/URL 或更多模型。
+5. **管理** — 备份 / 删除 provider / 删除模型 / 编辑能力。
+6. **刷新 models.dev 缓存** — 强制拉取最新官方数据。
+7. **语言** — English ↔ 中文。
+8. **退出**
 
 ### 新建 provider
 
