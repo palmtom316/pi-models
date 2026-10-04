@@ -210,6 +210,30 @@ export const BUILTIN_CATALOG: OfficialCatalog = {
       }),
     },
   },
+  meta: {
+    id: "meta",
+    name: "Meta",
+    models: {
+      "muse-spark-1.3": model({
+        id: "muse-spark-1.3",
+        name: "Muse Spark 1.3",
+        family: "muse",
+        // models.dev meta bucket (2026-09-02): minimal/low/medium/high/xhigh/max.
+        reasoning_options: [{ type: "effort", values: ["minimal", "low", "medium", "high", "xhigh", "max"] }],
+        modalities: TEXT_IMAGE_VIDEO,
+        limit: { context: 1_048_576, output: 131_072 },
+      }),
+      "muse-spark-1.3-contributor": model({
+        id: "muse-spark-1.3-contributor",
+        name: "Muse Spark 1.3 Contributor",
+        family: "muse",
+        // models.dev meta bucket (2026-09-02): no max level on the contributor tier.
+        reasoning_options: [{ type: "effort", values: ["minimal", "low", "medium", "high", "xhigh"] }],
+        modalities: TEXT_IMAGE_VIDEO,
+        limit: { context: 1_048_576, output: 131_072 },
+      }),
+    },
+  },
 };
 
 export function builtinOfficialIds(): string[] {

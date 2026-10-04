@@ -268,6 +268,22 @@ export function heuristicCaps(id: string): HeuristicCaps {
       note: "heuristic: gpt-5",
     };
   }
+  if (s.includes("muse") || s.includes("spark")) {
+    map.minimal = "minimal";
+    map.low = "low";
+    map.medium = "medium";
+    map.high = "high";
+    map.xhigh = "xhigh";
+    map.max = "max";
+    return {
+      reasoning: true,
+      input: ["text", "image"],
+      contextWindow: 1_048_576,
+      maxTokens: 131_072,
+      thinkingLevelMap: map,
+      note: "heuristic: muse-spark",
+    };
+  }
   if (s.includes("gemini")) {
     map.low = "low";
     map.medium = "medium";

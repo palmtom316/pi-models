@@ -28,6 +28,8 @@ describe("builtin catalog", () => {
   it("pins every requested daily-driver id", () => {
     const ids = new Set(builtinOfficialIds());
     for (const id of ALL) assert.ok(ids.has(id), id);
+    assert.ok(ids.has("muse-spark-1.3"));
+    assert.ok(ids.has("muse-spark-1.3-contributor"));
   });
 
   it("matches listed ids and short aliases offline", () => {
@@ -51,6 +53,9 @@ describe("builtin catalog", () => {
       ["zai/glm-5.3", "glm-5.3"],
       ["gemini-3.7-flash", "gemini-3.7-flash"],
       ["kimi-k3", "kimi-k3"],
+      ["muse-spark-1.3", "muse-spark-1.3"],
+      ["muse-spark-1.3-contributor", "muse-spark-1.3-contributor"],
+      ["meta/muse-spark-1.3", "muse-spark-1.3"],
     ];
     for (const [raw, officialId] of cases) {
       const hit = matchBuiltin(raw);
@@ -111,6 +116,16 @@ describe("builtin catalog", () => {
     assert.equal(kimi.off, null);
     assert.equal(kimi.low, "low");
     assert.equal(kimi.max, "max");
+
+    const muse = thinkingLevelMapFromOfficial(BUILTIN_CATALOG.meta.models["muse-spark-1.3"]);
+    assert.equal(muse.minimal, "minimal");
+    assert.equal(muse.max, "max");
+    assert.equal(muse.off, null);
+
+    const museContrib = thinkingLevelMapFromOfficial(BUILTIN_CATALOG.meta.models["muse-spark-1.3-contributor"]);
+    assert.equal(museContrib.minimal, "minimal");
+    assert.equal(museContrib.max, null);
+    assert.equal(museContrib.xhigh, "xhigh");
 
     const pro = thinkingLevelMapFromOfficial(BUILTIN_CATALOG.deepseek.models["deepseek-v4-pro"]);
     assert.equal(pro.off, "disabled");

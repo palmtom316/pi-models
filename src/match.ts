@@ -15,6 +15,7 @@ const VENDOR_PREFIXES = [
   "zhipuai/",
   "qwen/",
   "alibaba/",
+  "meta/",
   "x-ai/",
   "xai/",
 ];

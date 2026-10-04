@@ -34,6 +34,7 @@ export const OFFICIAL_BUCKETS = [
   "alibaba",
   "minimax",
   "xiaomi",
+  "meta",
 ] as const;
 
 export type OfficialBucket = (typeof OFFICIAL_BUCKETS)[number];

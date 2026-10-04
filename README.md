@@ -190,11 +190,12 @@ Priority order:
    | zhipuai | `glm-5.2` `glm-5.3` |
    | google | `gemini-3.7-flash` |
    | moonshotai | `kimi-k3` |
+   | meta | `muse-spark-1.3` `muse-spark-1.3-contributor` |
 
 2. **models.dev official buckets** — fetched only for *selected* ids the builtin
    table doesn't know (`https://models.dev/api.json`). Only official lab buckets
    are used (openai, anthropic, google, moonshotai, deepseek, xai, zhipuai, zai,
-   alibaba, minimax, xiaomi). Reseller copies (openrouter, `*-plan`, `*-cn`, …)
+   alibaba, minimax, xiaomi, meta). Reseller copies (openrouter, `*-plan`, `*-cn`, …)
    are never defaults; cost/prices are ignored. Cached at
    `{agentDir}/cache/models.dev.json` with ETag + 24h TTL; on failure the stale
    cache is used with a warning.
@@ -508,15 +509,16 @@ provider 上移除 —— 否则新加的 Claude 行会继承 `thinkingFormat: "
    | zhipuai | `glm-5.2` `glm-5.3` |
    | google | `gemini-3.7-flash` |
    | moonshotai | `kimi-k3` |
+   | meta | `muse-spark-1.3` `muse-spark-1.3-contributor` |
 
 2. **models.dev 官方桶** — 只为内置表不认识且**被勾选**的 id 拉取
    `https://models.dev/api.json`。只用官方实验室桶（openai、anthropic、google、
-   moonshotai、deepseek、xai、zhipuai、zai、alibaba、minimax、xiaomi）；
+   moonshotai、deepseek、xai、zhipuai、zai、alibaba、minimax、xiaomi、meta）；
    转售副本（openrouter、`*-plan`、`*-cn` 等）绝不当默认；价格一律忽略。
    缓存在 `{agentDir}/cache/models.dev.json`，带 ETag + 24 小时 TTL；失败时
    回退旧缓存并提示。
 3. **启发式** — 最后兜底，按 id 子串（`claude`、`gpt-5`、`gemini`、`kimi`、
-   `glm`、`grok`、`deepseek`……）给出同家族规模的窗口。
+   `glm`、`grok`、`deepseek`、`muse`/`spark`……）给出同家族规模的窗口。
 
 匹配时会把目录 id 归一化（小写、去 `vendor/` 前缀、取末段路径、去 `-think` /
 `:thinking` / `-YYYY` 后缀、套别名表），但**写入的上游 id 一字不改**。模糊命中

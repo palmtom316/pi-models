@@ -295,6 +295,7 @@ Provider 名：`^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$`。撞内置 id（`openai`、`a
 | zhipuai / zai | `glm-5.2` `glm-5.3`（`glm-5.3` 当时不在实验室桶，按 GLM-5 家族钉死） |
 | google | `gemini-3.7-flash` |
 | moonshotai | `kimi-k3` |
+| meta | `muse-spark-1.3` `muse-spark-1.3-contributor` |
 
 models.dev 缓存：
 
@@ -319,6 +320,7 @@ zai
 alibaba
 minimax
 xiaomi
+meta
 ```
 
 禁止当默认：`openrouter`、`ai-router`、`nano-gpt`、`hpc-ai`、`qiniu-ai`、`*-token-plan`、`*-coding-plan`、`alibaba-cn` 及一切转售 / 套餐副本。
@@ -332,7 +334,7 @@ xiaomi
 写入 id **始终**用上游原样。下列变换只用于匹配：
 
 1. 小写。
-2. 去 vendor 前缀：`deepseek-ai/`、`openai/`、`anthropic/`、`google/`、`moonshotai/`、`zai/`、`zhipuai/`、`z-ai/`、`qwen/`、`alibaba/`。
+2. 去 vendor 前缀：`deepseek-ai/`、`openai/`、`anthropic/`、`google/`、`moonshotai/`、`zai/`、`zhipuai/`、`z-ai/`、`qwen/`、`alibaba/`、`meta/`。
 3. 去站内后缀：`-think`、`-thinking`、`-reasoner`、`:thinking`、`:reasoning`。
 4. 去构建后缀：`-\d{4}$`（`-0731`、`-0813`）。  
    官方 `deepseek` **没有** `deepseek-v4-flash-0731`；那是转售 id。`deepseek-ai/deepseek-v4-flash-0731` 应命中官方 `deepseek-v4-flash`，标 `✓ official`。
@@ -402,6 +404,7 @@ UI 必须标明不是 models.dev。数字抄最近官方家族，不是权威。
 | `claude` / `opus` / `sonnet` | 1M / 128K / text+image / low…max；anthropic-messages 时 adaptive |
 | `gpt-5` / `o3` / `o4` | 1.05M / 128K / reasoning / off=none + 常见 effort |
 | `gemini` | 1M / 64K / text+image / low+medium+high |
+| `muse` / `spark` | 1M / 128K / reasoning / text+image / minimal…xhigh+max（无 off） |
 | 其它 | 128K / 16K / 纯文本 / 非 reasoning |
 
 ## 9. Provider / 模型级 compat
