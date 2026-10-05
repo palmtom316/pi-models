@@ -24,6 +24,9 @@ export interface Strings {
   manageDeleteProvider: string;
   manageDeleteModels: string;
   manageEditCaps: string;
+  manageHideProvider: string;
+  manageUnhideProvider: string;
+  manageRefreshModels: string;
   manageBack: string;
 
   // view existing
@@ -145,6 +148,22 @@ export interface Strings {
   deletedModels: (count: number, name: string) => string;
   editModelsTitle: (name: string) => string;
   backedUpProvider: (name: string, path: string) => string;
+  hideProviderTitle: string;
+  hideProviderNone: string;
+  confirmHideProvider: string;
+  confirmHideProviderMsg: (name: string, count: number) => string;
+  hiddenProvider: (name: string) => string;
+  unhideProviderTitle: string;
+  unhideProviderNone: string;
+  unhiddenProvider: (name: string) => string;
+  providerHiddenMark: string;
+  refreshModelsTitle: string;
+  refreshNoEndpoint: (name: string) => string;
+  refreshNeedKey: (name: string) => string;
+  refreshEndpointTitle: (name: string) => string;
+  refreshRemovedTitle: (name: string) => string;
+  refreshNothingChanged: string;
+  refreshedModels: (added: number, removed: number, name: string) => string;
 
   // edit caps detail
   editName: (name: string) => string;
@@ -196,6 +215,9 @@ const en: Strings = {
   manageDeleteProvider: "Delete a provider",
   manageDeleteModels: "Delete models from a provider",
   manageEditCaps: "Edit model capabilities",
+  manageHideProvider: "Hide a provider from /model",
+  manageUnhideProvider: "Show a hidden provider in /model",
+  manageRefreshModels: "Refresh models (keep name and API)",
   manageBack: "Back",
 
   viewTitle: "Existing providers & models",
@@ -306,6 +328,23 @@ const en: Strings = {
   deletedModels: (n, name) => `Deleted ${n} model(s) from ${name}`,
   editModelsTitle: (name) => `Edit models on ${name}`,
   backedUpProvider: (name, path) => `Backed up ${name} → ${path}`,
+  hideProviderTitle: "Hide from /model",
+  hideProviderNone: "Every provider in models.json is already hidden",
+  confirmHideProvider: "Hide provider",
+  confirmHideProviderMsg: (name, count) =>
+    `Hide all ${count} model(s) of ${name} from /model? They stay in models.json and can be shown again.`,
+  hiddenProvider: (name) => `Hidden ${name}. /model no longer lists it; models.json is unchanged.`,
+  unhideProviderTitle: "Show in /model",
+  unhideProviderNone: "No hidden providers",
+  unhiddenProvider: (name) => `Showing ${name} in /model again.`,
+  providerHiddenMark: "hidden",
+  refreshModelsTitle: "Refresh models",
+  refreshNoEndpoint: (name) => `${name} has no stored api + baseUrl to refresh`,
+  refreshNeedKey: (name) => `${name} has no usable API key. Enter one to fetch the catalog.`,
+  refreshEndpointTitle: (name) => `Endpoint to refresh for ${name}`,
+  refreshRemovedTitle: (name) => `Models no longer in the catalog (${name})`,
+  refreshNothingChanged: "Catalog matches models.json. Nothing to write.",
+  refreshedModels: (added, removed, name) => `Updated ${name}: added ${added}, removed ${removed}. Name and API were not changed.`,
 
   editName: (name) => `name: ${name}`,
   editContextWindow: (n) => `contextWindow: ${n}`,
@@ -355,6 +394,9 @@ const zh: Strings = {
   manageDeleteProvider: "删除 provider",
   manageDeleteModels: "删除 provider 下的模型",
   manageEditCaps: "编辑模型能力",
+  manageHideProvider: "从 /model 隐藏 provider",
+  manageUnhideProvider: "在 /model 重新显示已隐藏的 provider",
+  manageRefreshModels: "刷新模型（保持名称和 API）",
   manageBack: "返回",
 
   viewTitle: "已有 provider 及模型",
@@ -384,7 +426,7 @@ const zh: Strings = {
   groupSameUrl: "使用与上一分组相同的 URL",
   groupSkipped: (providerId) => `已跳过 ${providerId}：provider 已存在且未选择合并`,
 
-  fetchingModels: (api) => `正在拉取 ${api} 模型…`,
+  fetchingModels: (api, baseUrl) => `正在拉取 ${api} 模型（${baseUrl}）…`,
   noModelsReturned: "此 API 未返回模型",
   inputManualIds: "模型 id（逗号分隔），留空跳过",
   catalogFailed: "拉取失败",
@@ -465,6 +507,23 @@ const zh: Strings = {
   deletedModels: (n, name) => `从 ${name} 删除了 ${n} 个模型`,
   editModelsTitle: (name) => `编辑 ${name} 上的模型`,
   backedUpProvider: (name, path) => `已备份 ${name} → ${path}`,
+  hideProviderTitle: "从 /model 隐藏",
+  hideProviderNone: "models.json 里的 provider 都已隐藏",
+  confirmHideProvider: "隐藏 provider",
+  confirmHideProviderMsg: (name, count) =>
+    `从 /model 隐藏 ${name} 的全部 ${count} 个模型？它们仍留在 models.json，可以再显示。`,
+  hiddenProvider: (name) => `已隐藏 ${name}。/model 不再列出它，models.json 未改。`,
+  unhideProviderTitle: "在 /model 重新显示",
+  unhideProviderNone: "没有已隐藏的 provider",
+  unhiddenProvider: (name) => `已在 /model 重新显示 ${name}。`,
+  providerHiddenMark: "已隐藏",
+  refreshModelsTitle: "刷新模型",
+  refreshNoEndpoint: (name) => `${name} 没有已保存的 api + baseUrl，无法刷新`,
+  refreshNeedKey: (name) => `${name} 没有可用的 API key。输入一个来拉取目录。`,
+  refreshEndpointTitle: (name) => `刷新 ${name} 的端点`,
+  refreshRemovedTitle: (name) => `目录里已经没有的模型（${name}）`,
+  refreshNothingChanged: "目录与 models.json 一致，没有要写的改动。",
+  refreshedModels: (added, removed, name) => `已更新 ${name}：新增 ${added}，删除 ${removed}。名称和 API 未改。`,
 
   editName: (name) => `名称：${name}`,
   editContextWindow: (n) => `上下文窗口：${n}`,

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 import { setLang, t } from "../src/i18n.ts";
-import { runManageMenu } from "../src/manage.ts";
+import { runManageMenu, wizardHideProvider } from "../src/manage.ts";
 import type { PimUi } from "../src/ui/pim-ui.ts";
 import { FOOTER_SELECT_EXIT } from "../src/ui/dialogs.ts";
 import { mainMenuOptions, runMainMenu, wizardNew, wizardSwitchDefault, type CmdCtx } from "../src/wizard.ts";
@@ -377,6 +377,61 @@ describe("manage menu loop", () => {
       } as unknown as PimUi;
       await runManageMenu(ui, emptyCtx());
       assert.deepEqual(titles, [t().manageTitle, t().selectProvider, t().manageTitle]);
+    });
+  });
+
+  it("hides a provider in the sidecar and can show it again", async () => {
+    setLang("en");
+    await withAgentDir(async (dir) => {
+      await writeFile(join(dir, "models.json"), JSON.stringify({
+        providers: {
+          QQ: { apiKey: "sk", models: [{ id: "m", api: "openai-completions", baseUrl: "https://x/v1" }] },
+        },
+      }));
+      const registered: string[] = [];
+      const titles: string[] = [];
+      const ui = {
+        select: async (title: string) => {
+          if (title === t().manageTitle) {
+            return titles.length === 0 ? t().manageHideProvider : undefined;
+          }
+          titles.push(title);
+          if (title === t().hideProviderTitle) return "QQ";
+          return undefined;
+        },
+        confirm: async () => true,
+        notify: () => undefined,
+      } as unknown as PimUi;
+      const ctx = emptyCtx();
+      ctx.modelRegistry = {
+        ...ctx.modelRegistry,
+        getProvider: () => ({ id: "QQ" }) as never,
+        registerProvider: (provider: { id: string }) => registered.push(provider.id),
+        unregisterProvider: () => undefined,
+      };
+      await runManageMenu(ui, ctx);
+      const sidecar = JSON.parse(await readFile(join(dir, "pim-models.json"), "utf8"));
+      assert.deepEqual(sidecar.hiddenProviders, ["QQ"]);
+      assert.deepEqual(registered, ["QQ"]);
+      const models = JSON.parse(await readFile(join(dir, "models.json"), "utf8"));
+      assert.equal(models.providers.QQ.models[0].id, "m");
+    });
+  });
+
+  it("reports no providers, not already-hidden, when models.json is empty", async () => {
+    setLang("en");
+    await withAgentDir(async (dir) => {
+      await writeFile(join(dir, "models.json"), JSON.stringify({ providers: {} }));
+      await writeFile(join(dir, "pim-models.json"), JSON.stringify({ hiddenProviders: ["QQ"] }));
+      const notices: Array<[string, string]> = [];
+      const ui = {
+        select: async () => undefined,
+        confirm: async () => true,
+        notify: (message: string, level: string) => notices.push([message, level]),
+      } as unknown as PimUi;
+      await wizardHideProvider(ui, { modelRegistry: { refresh: async () => undefined, getError: () => undefined } },
+        JSON.parse(await readFile(join(dir, "models.json"), "utf8")));
+      assert.deepEqual(notices, [[t().noProvidersInFile, "warning"]]);
     });
   });
 });

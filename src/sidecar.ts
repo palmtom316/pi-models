@@ -8,6 +8,11 @@ export interface Sidecar {
   lastProvider?: string;
   lastEndpoints?: Array<{ provider: string; api: string; baseUrl: string }>;
   lang?: string;
+  /**
+   * Provider ids whose models stay in models.json but are dropped from /model.
+   * Stored here, not in models.json: Pi rejects unknown provider fields.
+   */
+  hiddenProviders?: string[];
 }
 
 export async function readSidecar(path = getSidecarPath()): Promise<Sidecar> {
@@ -26,7 +31,9 @@ export async function writeSidecar(data: Sidecar, path = getSidecarPath()): Prom
       lastProvider: data.lastProvider ?? current.lastProvider,
       lastEndpoints: data.lastEndpoints ?? current.lastEndpoints,
       lang: data.lang ?? current.lang,
+      hiddenProviders: data.hiddenProviders ?? current.hiddenProviders,
     };
+    if (!safe.hiddenProviders?.length) delete safe.hiddenProviders;
     await mkdir(dirname(path), { recursive: true });
     const tmp = `${path}.tmp-${process.pid}`;
     try {

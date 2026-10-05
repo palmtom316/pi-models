@@ -35,6 +35,10 @@ export type CmdCtx = {
     refresh: () => Promise<unknown>;
     getError: () => string | undefined;
     find: (provider: string, id: string) => unknown;
+    getApiKeyForProvider?: (providerId: string) => Promise<string | undefined> | string | undefined;
+    getProvider?: (id: string) => import("@earendil-works/pi-ai").Provider | undefined;
+    registerProvider?: (provider: import("@earendil-works/pi-ai").Provider) => void;
+    unregisterProvider?: (id: string) => void;
   };
 };
 

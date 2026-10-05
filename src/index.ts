@@ -1,7 +1,12 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { applyVisibility } from "./visibility.ts";
 import { runWizard } from "./wizard.ts";
 
 export default function piModels(pi: ExtensionAPI) {
+  pi.on("session_start", async (_event, ctx) => {
+    await applyVisibility(ctx.modelRegistry);
+  });
+
   const handler = async (_args: string, ctx: Parameters<typeof runWizard>[0]) => {
     try {
       await runWizard(ctx, pi);

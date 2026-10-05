@@ -97,7 +97,7 @@ Main menu (Esc goes back one layer; Esc / **Exit** on this menu closes `/pim`):
 3. **New provider** — name + one `api`/`baseUrl`, then loop API keys (model groups).
 4. **Add API / models** — attach another protocol/URL (or more models) to an
    existing provider.
-5. **Manage** — backup / delete provider / delete models / edit capabilities.
+5. **Manage** — backup / hide or show a provider in `/model` / refresh its models / delete provider / delete models / edit capabilities.
 6. **Refresh models.dev cache** — force-fetch the latest official data.
 7. **Language** — English ↔ 中文.
 8. **Exit**
@@ -167,6 +167,14 @@ otherwise a new Claude row would inherit `thinkingFormat: "deepseek"`.
 
 - **Backup provider** → `{agentDir}/backups/{name}-YYYYMMDD-HHMMSS-mmm.json`
   (mode `0600`, last 10 kept).
+- **Hide from `/model`** — the provider stays in `models.json`, but a session-start
+  filter drops all of its models from `/model`. The hide list lives in
+  `pim-models.json` (`hiddenProviders`), because Pi rejects unknown fields in
+  `models.json`. **Show a hidden provider** puts it back.
+- **Refresh models** — refetch one stored `(api, baseUrl)` without renaming the
+  provider or changing its API. New catalog ids can be added; stored ids missing
+  from the catalog can be removed. The stored key is reused, otherwise Pi's key
+  for that provider, otherwise you type one.
 - **Delete provider** — backs up first, then removes it from `models.json`.
 - **Delete models** — multi-select models inside one provider.
 - **Edit capabilities** — multi-select models, then edit each one (same editor as
@@ -294,7 +302,7 @@ Respects `PI_CODING_AGENT_DIR` (default `~/.pi/agent`):
 | `models.json.bak-YYYYMMDD-HHMMSS-mmm` | Pre-write snapshot; last 10 kept. |
 | `backups/{provider}-….json` | Per-provider snapshots from Manage. |
 | `cache/models.dev.json` | Official-bucket cache (no keys, no prices). |
-| `pim-models.json` | Sidecar: language, last endpoints, cache time. No keys. |
+| `pim-models.json` | Sidecar: language, last provider/endpoints, cache time, and `hiddenProviders` (ids hidden from `/model`). No keys. |
 
 ### Safety
 
@@ -426,7 +434,7 @@ pi --extension /absolute/path/to/pi-models
    （`defaultProvider` / `defaultModel`），并切换当前会话。
 3. **新建 provider** — 名称 + 一条 `api`/`baseUrl`，然后循环输入 API key（模型分组）。
 4. **给已有 provider 加 API / 模型** — 在现有 provider 上追加协议/URL 或更多模型。
-5. **管理** — 备份 / 删除 provider / 删除模型 / 编辑能力。
+5. **管理** — 备份 / 从 `/model` 隐藏或重新显示 provider / 刷新模型 / 删除 provider / 删除模型 / 编辑能力。
 6. **刷新 models.dev 缓存** — 强制拉取最新官方数据。
 7. **语言** — English ↔ 中文。
 8. **退出**
@@ -487,6 +495,8 @@ provider 上移除 —— 否则新加的 Claude 行会继承 `thinkingFormat: "
 
 - **备份 provider** → `{agentDir}/backups/{name}-YYYYMMDD-HHMMSS-mmm.json`
   （权限 `0600`，保留最近 10 份）。
+- **从 `/model` 隐藏** — provider 仍留在 `models.json`，但会话启动时的过滤器会把它的全部模型从 `/model` 去掉。隐藏名单写在 `pim-models.json` 的 `hiddenProviders`，因为 Pi 会拒绝 `models.json` 里的未知字段。**重新显示**会把它加回来。
+- **刷新模型** — 重新拉取已保存的一条 `(api, baseUrl)`，不改 provider 名称，也不改 API。目录里多出来的 id 可以新增；目录里已经没有的已存 id 可以删除。优先复用已存的 key，否则用 Pi 里该 provider 的 key，再否则手动输入。
 - **删除 provider** — 先备份，再从 `models.json` 移除。
 - **删除模型** — 在一个 provider 内多选删除。
 - **编辑能力** — 多选模型后逐个编辑（与导入时的编辑器相同，见下）。
@@ -606,7 +616,7 @@ provider 上移除 —— 否则新加的 Claude 行会继承 `thinkingFormat: "
 | `models.json.bak-YYYYMMDD-HHMMSS-mmm` | 写前快照，保留最近 10 份。 |
 | `backups/{provider}-….json` | 管理里产生的单 provider 备份。 |
 | `cache/models.dev.json` | 官方桶缓存（无 key、无价格）。 |
-| `pim-models.json` | sidecar：语言、最近端点、缓存时间。无 key。 |
+| `pim-models.json` | 旁路文件：语言、上次 provider/端点、缓存时间，以及 `hiddenProviders`（从 `/model` 隐藏的 id）。无 key。 |
 
 ### 安全
 
