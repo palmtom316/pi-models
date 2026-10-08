@@ -3,6 +3,7 @@ import type { OfficialCatalog, OfficialModel } from "./types.ts";
 const TEXT = { input: ["text"], output: ["text"] };
 const TEXT_IMAGE = { input: ["text", "image", "pdf"], output: ["text"] };
 const TEXT_IMAGE_VIDEO = { input: ["text", "image", "video"], output: ["text"] };
+const TEXT_IMAGE_VIDEO_PDF = { input: ["text", "image", "video", "pdf"], output: ["text"] };
 const GEMINI_IN = { input: ["text", "image", "video", "audio", "pdf"], output: ["text"] };
 
 const INTERLEAVED = { field: "reasoning_content" } as const;
@@ -13,17 +14,19 @@ function model(spec: OfficialModel): OfficialModel {
 
 /** Short / dotted ids that should hit a builtin official id after normalizeForMatch. */
 export const BUILTIN_ALIASES: Record<string, string> = {
-  "claude-opus-4.8": "claude-opus-4-8",
-  "opus-4.8": "claude-opus-4-8",
-  "opus-4-8": "claude-opus-4-8",
   "opus-5": "claude-opus-5",
+  "opus-4-8": "claude-opus-4-8",
   "fable-5": "claude-fable-5",
   "sonnet-5": "claude-sonnet-5",
+  // DeepSeek V4.1 Flash is the current V4 flash model; the official id is
+  // `deepseek-flash`, and both dotted and dashed relay spellings are routed to it.
+  "deepseek-v4.1-flash": "deepseek-v4-flash",
+  "deepseek-v4-1-flash": "deepseek-v4-flash",
 };
 
 /**
  * Offline pack for the models we actually add every day.
- * Caps from vendor docs + models.dev official buckets (checked 2026-08-17), except:
+ * Caps from vendor docs + models.dev official buckets (checked 2026-10-09), except:
  * - every Claude entry is pinned to 1M context (user requirement)
  * - glm-5.3 is not in the zhipuai/zai lab buckets yet; pinned from Z.AI GLM-5.3 docs
  */
@@ -133,13 +136,33 @@ export const BUILTIN_CATALOG: OfficialCatalog = {
     id: "deepseek",
     name: "DeepSeek",
     models: {
+      // DeepSeek V4.1 Flash superseded V4 Flash and V4 Flash Vision Exp; the old
+      // ids are still routed to it, so all v4 flash spellings take images.
       "deepseek-v4-flash": model({
         id: "deepseek-v4-flash",
         name: "DeepSeek V4 Flash",
         family: "deepseek-flash",
         reasoning_options: [{ type: "toggle" }, { type: "effort", values: ["low", "high", "max"] }],
         interleaved: INTERLEAVED,
-        modalities: TEXT,
+        modalities: TEXT_IMAGE,
+        limit: { context: 1_000_000, output: 384_000 },
+      }),
+      "deepseek-flash": model({
+        id: "deepseek-flash",
+        name: "DeepSeek Flash (V4.1 Flash)",
+        family: "deepseek-flash",
+        reasoning_options: [{ type: "toggle" }, { type: "effort", values: ["low", "high", "max"] }],
+        interleaved: INTERLEAVED,
+        modalities: TEXT_IMAGE,
+        limit: { context: 1_000_000, output: 384_000 },
+      }),
+      "deepseek-v4-flash-vision-exp": model({
+        id: "deepseek-v4-flash-vision-exp",
+        name: "DeepSeek V4 Flash Vision Exp",
+        family: "deepseek-flash",
+        reasoning_options: [{ type: "toggle" }, { type: "effort", values: ["low", "high", "max"] }],
+        interleaved: INTERLEAVED,
+        modalities: TEXT_IMAGE,
         limit: { context: 1_000_000, output: 384_000 },
       }),
       "deepseek-v4-pro": model({
@@ -176,6 +199,25 @@ export const BUILTIN_CATALOG: OfficialCatalog = {
         reasoning_options: [{ type: "effort", values: ["low", "high", "max"] }],
         interleaved: INTERLEAVED,
         modalities: TEXT,
+        limit: { context: 1_000_000, output: 131_072 },
+      }),
+      // First natively multimodal GLM-5 (text/image/video/pdf), 1M context.
+      "glm-5.3-flash": model({
+        id: "glm-5.3-flash",
+        name: "GLM-5.3 Flash",
+        family: "glm",
+        reasoning_options: [{ type: "effort", values: ["low", "high", "max"] }],
+        interleaved: INTERLEAVED,
+        modalities: TEXT_IMAGE_VIDEO_PDF,
+        limit: { context: 1_000_000, output: 131_072 },
+      }),
+      "glm-5.3-flashx": model({
+        id: "glm-5.3-flashx",
+        name: "GLM-5.3 FlashX",
+        family: "glm",
+        reasoning_options: [{ type: "effort", values: ["low", "high", "max"] }],
+        interleaved: INTERLEAVED,
+        modalities: TEXT_IMAGE_VIDEO_PDF,
         limit: { context: 1_000_000, output: 131_072 },
       }),
     },
@@ -235,6 +277,12 @@ export const BUILTIN_CATALOG: OfficialCatalog = {
     },
   },
 };
+
+/** Canonical ids in the builtin table (alias keys and catalog ids). */
+export const BUILTIN_IDS: ReadonlySet<string> = new Set<string>([
+  ...Object.keys(BUILTIN_ALIASES),
+  ...Object.values(BUILTIN_CATALOG).flatMap((provider) => Object.keys(provider.models)),
+]);
 
 export function builtinOfficialIds(): string[] {
   const ids: string[] = [];

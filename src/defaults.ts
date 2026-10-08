@@ -145,6 +145,13 @@ export function heuristicCaps(id: string): HeuristicCaps {
   const s = id.toLowerCase();
   const map = EMPTY_MAP();
 
+  // DeepSeek V4.1 Flash is natively multimodal and supersedes V4 Flash and
+  // V4 Flash Vision Exp (the old ids are still routed to it), so every v4
+  // flash id — and `deepseek-flash`, the official name — takes images.
+  // Only deepseek-v4-pro stays text-only, and it is matched by the builtin
+  // table; the pessimistic direction is the harmful one here because a wrong
+  // `["text"]` silently hides vision, while a wrong `["text","image"]` at
+  // worst returns a clear 400 from the backend.
   if (s.includes("deepseek") || s.includes("v4-flash")) {
     map.off = "disabled";
     map.low = "low";
@@ -152,24 +159,38 @@ export function heuristicCaps(id: string): HeuristicCaps {
     map.max = "max";
     return {
       reasoning: true,
-      input: ["text"],
+      input: ["text", "image"],
       contextWindow: 1_000_000,
       maxTokens: 384_000,
       thinkingLevelMap: map,
       note: "heuristic: deepseek-v4",
     };
   }
+  // GLM-5.3-Flash / -FlashX: first natively multimodal GLM-5 (image+video+pdf).
   if (s.includes("glm-5.3")) {
     map.low = "low";
     map.high = "high";
     map.max = "max";
     return {
       reasoning: true,
-      input: ["text"],
+      input: ["text", "image"],
       contextWindow: 1_000_000,
       maxTokens: 131_072,
       thinkingLevelMap: map,
       note: "heuristic: glm-5.3",
+    };
+  }
+  // Legacy `v` vision variants (glm-5v-turbo, glm-4.6v, glm-4.5v).
+  if (/glm-\d+(?:\.\d+)?v/.test(s)) {
+    map.off = "none";
+    map.high = "high";
+    return {
+      reasoning: true,
+      input: ["text", "image"],
+      contextWindow: 200_000,
+      maxTokens: 131_072,
+      thinkingLevelMap: map,
+      note: "heuristic: glm-vision",
     };
   }
   if (s.includes("glm-5.2") || s.includes("glm-5")) {

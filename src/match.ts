@@ -1,4 +1,4 @@
-import { BUILTIN_ALIASES } from "./builtin-catalog.ts";
+import { BUILTIN_ALIASES, BUILTIN_IDS } from "./builtin-catalog.ts";
 import type { MatchHit, MatchSource, OfficialBucket, OfficialCatalog, OfficialModel } from "./types.ts";
 import { OFFICIAL_BUCKETS } from "./types.ts";
 import { isNonChatModality } from "./defaults.ts";
@@ -45,7 +45,19 @@ export function normalizeForMatch(raw: string): string {
     if (s.endsWith(suf)) s = s.slice(0, -suf.length);
   }
   s = s.replace(/-\d{4}$/, "");
-  return BUILTIN_ALIASES[s] ?? s;
+  if (BUILTIN_ALIASES[s]) return BUILTIN_ALIASES[s];
+  if (BUILTIN_IDS.has(s)) return s;
+  // Generalize dots to dashes (`deepseek-v4.1-flash` → `deepseek-v4-1-flash` and
+  // `claude-opus-4.8` → `claude-opus-4-8`) and try again. The dashed form already
+  // drops non-alphanumerics, so `v4.1` becomes `v4-1`. Only accept the rewrite
+  // when it lands on a known builtin id / alias, so genuinely dotted upstream ids
+  // and models.dev keys that happen to keep dots are never confused.
+  const dashed = s.replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  if (dashed !== s) {
+    if (BUILTIN_ALIASES[dashed]) return BUILTIN_ALIASES[dashed];
+    if (BUILTIN_IDS.has(dashed)) return dashed;
+  }
+  return s;
 }
 
 function tokens(id: string): string[] {

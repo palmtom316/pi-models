@@ -17,9 +17,13 @@ const ALL = [
   "grok-4.5",
   "grok-4.6",
   "deepseek-v4-flash",
+  "deepseek-flash",
+  "deepseek-v4-flash-vision-exp",
   "deepseek-v4-pro",
   "glm-5.2",
   "glm-5.3",
+  "glm-5.3-flash",
+  "glm-5.3-flashx",
   "gemini-3.7-flash",
   "kimi-k3",
 ];
@@ -48,9 +52,17 @@ describe("builtin catalog", () => {
       ["grok-4.5", "grok-4.5"],
       ["grok-4.6", "grok-4.6"],
       ["deepseek-ai/deepseek-v4-flash-0731", "deepseek-v4-flash"],
+      ["deepseek-v4-flash", "deepseek-v4-flash"],
+      ["deepseek-flash", "deepseek-flash"],
+      ["deepseek-v4-flash-vision-exp", "deepseek-v4-flash-vision-exp"],
+      ["deepseek-v4.1-flash", "deepseek-v4-flash"],
+      ["deepseek-v4-1-flash", "deepseek-v4-flash"],
+      ["deepseek-ai/DeepSeek-V4.1-Flash", "deepseek-v4-flash"],
       ["deepseek-v4-pro", "deepseek-v4-pro"],
       ["glm-5.2", "glm-5.2"],
       ["zai/glm-5.3", "glm-5.3"],
+      ["glm-5.3-flash", "glm-5.3-flash"],
+      ["z-ai/glm-5.3-flashx", "glm-5.3-flashx"],
       ["gemini-3.7-flash", "gemini-3.7-flash"],
       ["kimi-k3", "kimi-k3"],
       ["muse-spark-1.3", "muse-spark-1.3"],
@@ -69,6 +81,21 @@ describe("builtin catalog", () => {
     const hit = matchBuiltin("gpt-5");
     assert.equal(hit.kind, "unmatched");
     assert.notEqual(normalizeForMatch("gpt-5"), "gpt-5.6-sol");
+  });
+
+  it("pins multimodal capability where the vendor serves it", () => {
+    const image = ["text", "image", "pdf"];
+    for (const id of ["deepseek-v4-flash", "deepseek-flash", "deepseek-v4-flash-vision-exp"]) {
+      assert.deepEqual(BUILTIN_CATALOG.deepseek.models[id].modalities?.input, image, id);
+    }
+    assert.deepEqual(BUILTIN_CATALOG.deepseek.models["deepseek-v4-pro"].modalities?.input, ["text"]);
+
+    const visionPdf = ["text", "image", "video", "pdf"];
+    for (const id of ["glm-5.3-flash", "glm-5.3-flashx"]) {
+      assert.deepEqual(BUILTIN_CATALOG.zhipuai.models[id].modalities?.input, visionPdf, id);
+    }
+    assert.deepEqual(BUILTIN_CATALOG.zhipuai.models["glm-5.3"].modalities?.input, ["text"]);
+    assert.deepEqual(BUILTIN_CATALOG.zhipuai.models["glm-5.2"].modalities?.input, ["text"]);
   });
 
   it("forces 1M context on every builtin Claude", () => {

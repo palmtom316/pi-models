@@ -284,15 +284,15 @@ Provider 名：`^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$`。撞内置 id（`openai`、`a
 3. 用户勾选了内置没有的 id 时，才 GET `https://models.dev/api.json` 官方桶（条件 GET + 本地缓存）。
 4. 仍失败：§8.5 启发式，列表标黄。
 
-内置表（2026-08-17 钉死，Claude 一律 1M 上下文）：
+内置表(2026-10-09 复核,Claude 一律 1M 上下文):
 
 | 实验室 | id |
 | --- | --- |
 | openai | `gpt-5.5` `gpt-5.6-sol` `gpt-5.6-terra` `gpt-5.6-luna` |
 | anthropic | `claude-opus-5` `claude-opus-4-8` `claude-fable-5` `claude-sonnet-5`（全部 `contextWindow=1000000`） |
 | xai | `grok-4.5` `grok-4.6` |
-| deepseek | `deepseek-v4-flash` `deepseek-v4-pro` |
-| zhipuai / zai | `glm-5.2` `glm-5.3`（`glm-5.3` 当时不在实验室桶，按 GLM-5 家族钉死） |
+| deepseek | `deepseek-v4-flash` `deepseek-flash` `deepseek-v4-flash-vision-exp` `deepseek-v4-pro`(`-pro` 纯文本,其余 text+image+pdf) |
+| zhipuai / zai | `glm-5.2` `glm-5.3`(纯文本)`glm-5.3-flash` `glm-5.3-flashx`(text+image+video+pdf,钉自 models.dev zhipuai 桶) |
 | google | `gemini-3.7-flash` |
 | moonshotai | `kimi-k3` |
 | meta | `muse-spark-1.3` `muse-spark-1.3-contributor` |
@@ -336,12 +336,14 @@ meta
 1. 小写。
 2. 去 vendor 前缀：`deepseek-ai/`、`openai/`、`anthropic/`、`google/`、`moonshotai/`、`zai/`、`zhipuai/`、`z-ai/`、`qwen/`、`alibaba/`、`meta/`。
 3. 去站内后缀：`-think`、`-thinking`、`-reasoner`、`:thinking`、`:reasoning`。
-4. 去构建后缀：`-\d{4}$`（`-0731`、`-0813`）。  
-   官方 `deepseek` **没有** `deepseek-v4-flash-0731`；那是转售 id。`deepseek-ai/deepseek-v4-flash-0731` 应命中官方 `deepseek-v4-flash`，标 `✓ official`。
-5. 官方桶精确匹配规范化 id。
-6. 模糊：打分。官方 id 是规范化 id 的前缀/后缀且长度差小，优于 contains。分差不够标 `~ fuzzy`，**不要自动定**。禁止 `contains + last_updated 最新`（`gpt-5` 会误配成最新的 `gpt-5.6-*`）。
-7. 禁止 contains 命中 embedding / tts / realtime / image / video / `gpt-image` / `whisper`。
-8. 仍失败：`unmatched` + §8.5，列表标黄。
+4. 去构建后缀:`-\d{4}$`(`-0731`、`-0813`)。  
+   官方 `deepseek` **没有** `deepseek-v4-flash-0731`;那是转售 id。`deepseek-ai/deepseek-v4-flash-0731` 应命中官方 `deepseek-v4-flash`,标 `✓ official`。
+5. 别名表优先;随后若结果已是内置表里的 id 就直接用。
+6. 点号→连字符重写(`deepseek-v4.1-flash` → `deepseek-v4-1-flash`、`claude-opus-4.8` → `claude-opus-4-8`),**仅当重写结果命中内置 id / 别名时接受**。因此 `deepseek-v4.1-flash`、`deepseek-ai/DeepSeek-V4.1-Flash` 都命中内置 `deepseek-v4-flash`;而 `gpt-5.6` 这类 id 保留原点号,不影响 models.dev 桶的精确匹配。
+7. 官方桶精确匹配规范化 id。
+8. 模糊:打分。官方 id 是规范化 id 的前缀/后缀且长度差小,优于 contains。分差不够标 `~ fuzzy`,**不要自动定**。禁止 `contains + last_updated 最新`(`gpt-5` 会误配成最新的 `gpt-5.6-*`)。
+9. 禁止 contains 命中 embedding / tts / realtime / image / video / `gpt-image` / `whisper`。
+10. 仍失败:`unmatched` + §8.5,列表标黄。
 
 ### 8.4 字段映射（忽略价格）
 
@@ -381,9 +383,11 @@ Pi 键：`off | minimal | low | medium | high | xhigh | max`。
 | `claude-sonnet-5` | toggle + low…max |
 | `gemini-3.7-flash` | 仅 low/medium/high |
 | `kimi-k3` | **无 off**（官网始终思考）+ low/high/max；interleaved `reasoning_content` |
-| `deepseek-v4-flash` / `deepseek-v4-pro` | toggle + low/high/max（官网两模型同一张 effort 表）；interleaved |
-| `glm-5.2` | `off:"none"` + high+max（`none`/`minimal` 关思考；low/medium→high） |
-| `glm-5.3` | **无 off** + low/high/max（官网不能 `disabled`） |
+| `deepseek-v4-flash` / `deepseek-flash` / `deepseek-v4-flash-vision-exp` | toggle + low/high/max(官网同一张 effort 表);interleaved;text+image+pdf |
+| `deepseek-v4-pro` | 同上档位;纯文本(官网未宣传视觉) |
+| `glm-5.2` | `off:"none"` + high+max(`none`/`minimal` 关思考;low/medium→high) |
+| `glm-5.3` | **无 off** + low/high/max(官网不能 `disabled`);纯文本 |
+| `glm-5.3-flash` / `glm-5.3-flashx` | **无 off** + low/high/max;text+image+video+pdf(首个原生多模态 GLM-5) |
 | `grok-4.6` | low/medium/high/xhigh（无 max；不能关） |
 
 用户可改每档：隐藏 (`null`) / 原样 / 映射成别的字符串（`max → high`）。
@@ -394,8 +398,9 @@ UI 必须标明不是 models.dev。数字抄最近官方家族，不是权威。
 
 | id 子串 | 默认 |
 | --- | --- |
-| `deepseek` / `v4-flash` | 1M / 384K / reasoning / deepseek thinking / toggle+low+high+max |
-| `glm-5.3` | 1M / 128K / reasoning / zai thinking / low+high+max（无 off） |
+| `deepseek` / `v4-flash` | 1M / 384K / reasoning / deepseek thinking / toggle+low+high+max /**text+image**(V4.1 Flash 原生多模态;`v4-pro` 由内置表钉住纯文本) |
+| `glm-5.3` | 1M / 128K / reasoning / zai thinking / low+high+max(无 off)/ **text+image** |
+| `glm-\d+v`(glm-5v-turbo / glm-4.6v / glm-4.5v) | 200K / 131K / reasoning / **text+image** |
 | `glm-5.2` / `glm-5` | 1M / 128K / reasoning / zai thinking / off=none + high+max |
 | `grok-4.6` | 500K / 500K / text+image / low…xhigh |
 | `grok-4` | 500K / 500K / text+image / low+medium+high |

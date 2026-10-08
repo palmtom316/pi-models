@@ -194,8 +194,8 @@ Priority order:
    | openai | `gpt-5.5` `gpt-5.6-sol` `gpt-5.6-terra` `gpt-5.6-luna` |
    | anthropic | `claude-opus-5` `claude-opus-4-8` `claude-fable-5` `claude-sonnet-5` |
    | xai | `grok-4.5` `grok-4.6` |
-   | deepseek | `deepseek-v4-flash` `deepseek-v4-pro` |
-   | zhipuai | `glm-5.2` `glm-5.3` |
+   | deepseek | `deepseek-v4-flash` `deepseek-flash` `deepseek-v4-flash-vision-exp` `deepseek-v4-pro` |
+   | zhipuai | `glm-5.2` `glm-5.3` `glm-5.3-flash` `glm-5.3-flashx` |
    | google | `gemini-3.7-flash` |
    | moonshotai | `kimi-k3` |
    | meta | `muse-spark-1.3` `muse-spark-1.3-contributor` |
@@ -213,7 +213,13 @@ Priority order:
 
 Matching normalizes the catalog id (lowercase, drop `vendor/` prefixes, keep the
 last path segment, drop `-think` / `:thinking` / `-YYYY` suffixes, apply aliases)
-but **writes the upstream id unchanged**. Fuzzy hits (score ≥ 55) must be
+but **writes the upstream id unchanged**. Dotted ids are also rewritten onto a
+known builtin id when one exists (`deepseek-v4.1-flash` / `deepseek-v4-1-flash` /
+`deepseek-ai/DeepSeek-V4.1-Flash` → builtin `deepseek-v4-flash`); ids nothing
+knows keep their dots. DeepSeek V4.1 Flash is natively multimodal and the old
+`deepseek-v4-flash` / `deepseek-v4-flash-vision-exp` names are routed to it, so
+the deepseek heuristic falls back to text+image (only `deepseek-v4-pro` stays
+text-only, and it is pinned in the builtin table). Fuzzy hits (score ≥ 55) must be
 confirmed before their capabilities are used; `gpt-5` is never auto-upgraded to
 `gpt-5.6-*`.
 
@@ -515,8 +521,8 @@ provider 上移除 —— 否则新加的 Claude 行会继承 `thinkingFormat: "
    | openai | `gpt-5.5` `gpt-5.6-sol` `gpt-5.6-terra` `gpt-5.6-luna` |
    | anthropic | `claude-opus-5` `claude-opus-4-8` `claude-fable-5` `claude-sonnet-5` |
    | xai | `grok-4.5` `grok-4.6` |
-   | deepseek | `deepseek-v4-flash` `deepseek-v4-pro` |
-   | zhipuai | `glm-5.2` `glm-5.3` |
+   | deepseek | `deepseek-v4-flash` `deepseek-flash` `deepseek-v4-flash-vision-exp` `deepseek-v4-pro` |
+   | zhipuai | `glm-5.2` `glm-5.3` `glm-5.3-flash` `glm-5.3-flashx` |
    | google | `gemini-3.7-flash` |
    | moonshotai | `kimi-k3` |
    | meta | `muse-spark-1.3` `muse-spark-1.3-contributor` |
@@ -531,8 +537,13 @@ provider 上移除 —— 否则新加的 Claude 行会继承 `thinkingFormat: "
    `glm`、`grok`、`deepseek`、`muse`/`spark`……）给出同家族规模的窗口。
 
 匹配时会把目录 id 归一化（小写、去 `vendor/` 前缀、取末段路径、去 `-think` /
-`:thinking` / `-YYYY` 后缀、套别名表），但**写入的上游 id 一字不改**。模糊命中
-（分数 ≥ 55）必须确认后才抄用其能力；`gpt-5` 绝不会自动升级成 `gpt-5.6-*`。
+`:thinking` / `-YYYY` 后缀、套别名表),但**写入的上游 id 一字不改**。带点的 id
+若能在内置表里找到对应条目,会被改写成它(`deepseek-v4.1-flash` /
+`deepseek-v4-1-flash` / `deepseek-ai/DeepSeek-V4.1-Flash` → 内置
+`deepseek-v4-flash`);内置表不认识的 id 保留原点号。DeepSeek V4.1 Flash 原生多模态,
+旧的 `deepseek-v4-flash` / `deepseek-v4-flash-vision-exp` 也已路由到它,所以
+deepseek 启发式兜底改成 text+image(只有 `deepseek-v4-pro` 保持纯文本,但它被内置表钉住)。
+模糊命中(分数 ≥ 55)必须确认后才抄用其能力;`gpt-5` 绝不会自动升级成 `gpt-5.6-*`。
 
 ### 保持模型数据最新
 

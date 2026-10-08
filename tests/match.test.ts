@@ -17,6 +17,13 @@ describe("normalizeForMatch", () => {
     assert.equal(normalizeForMatch("DeepSeek-V4-Flash-think"), "deepseek-v4-flash");
     assert.equal(normalizeForMatch("GLM-5.2-think"), "glm-5.2");
   });
+
+  it("rewrites dotted ids onto a builtin id only when one exists", () => {
+    assert.equal(normalizeForMatch("deepseek-v4.1-flash"), "deepseek-v4-flash");
+    assert.equal(normalizeForMatch("deepseek-v4-1-flash"), "deepseek-v4-flash");
+    assert.equal(normalizeForMatch("openai/gpt-5.6-luna"), "gpt-5.6-luna");
+    assert.equal(normalizeForMatch("whatever-1.2.3"), "whatever-1.2.3");
+  });
 });
 
 describe("matchOfficial", () => {
