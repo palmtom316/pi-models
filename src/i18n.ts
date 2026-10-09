@@ -195,6 +195,10 @@ export interface Strings {
   thinkingBack: string;
   thinkingCustomValue: (level: string) => string;
 
+  // session self-heal
+  inputBackfilled: (count: number, detail: string) => string;
+  inputBackfillFailed: (err: string) => string;
+
   // non-tui
   errInteractiveOnly: string;
 }
@@ -375,6 +379,10 @@ const en: Strings = {
   thinkingBack: "back",
   thinkingCustomValue: (level) => `${level} value`,
 
+  inputBackfilled: (count, detail) =>
+    `Backfilled image input for ${count} model(s): ${detail}`,
+  inputBackfillFailed: (err) => `Could not backfill model input lists: ${err}`,
+
   errInteractiveOnly: "pim is interactive-only (TUI)",
 };
 
@@ -553,6 +561,9 @@ const zh: Strings = {
   thinkingCustom: "自定义",
   thinkingBack: "返回",
   thinkingCustomValue: (level) => `${level} 的值`,
+
+  inputBackfilled: (count, detail) => `已为 ${count} 个模型补齐 image 输入能力：${detail}`,
+  inputBackfillFailed: (err) => `补齐模型 input 能力失败：${err}`,
 
   errInteractiveOnly: "pim 仅在 TUI 交互模式下可用",
 };

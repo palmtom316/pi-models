@@ -1,9 +1,36 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { applyInputBackfill, describeChanges, persistInputBackfill } from "./caps-backfill.ts";
+import { t } from "./i18n.ts";
 import { applyVisibility } from "./visibility.ts";
 import { runWizard } from "./wizard.ts";
 
+/**
+ * Heal `input` lists written by older versions before anything reads them:
+ * an id the builtin catalog knows is multimodal but whose entry still says
+ * `["text"]` silently loses every image Pi hands to the model.
+ *
+ * The file is repaired first so the fix survives a restart and other
+ * consumers (e.g. `pi --list-models`) agree, then the registry is patched so
+ * the running session stops dropping images immediately.
+ */
+async function healInputCapabilities(ctx: Parameters<typeof runWizard>[0]): Promise<void> {
+  try {
+    const changes = await persistInputBackfill();
+    await applyInputBackfill(ctx.modelRegistry);
+    if (changes.length) {
+      ctx.ui.notify(t().inputBackfilled(changes.length, describeChanges(changes)), "info");
+    }
+  } catch (error) {
+    const raw = error instanceof Error ? error.message : String(error);
+    ctx.ui.notify(t().inputBackfillFailed(raw), "warning");
+  }
+}
+
 export default function piModels(pi: ExtensionAPI) {
   pi.on("session_start", async (_event, ctx) => {
+    // Backfill first: applyVisibility wraps whatever provider is composed, so
+    // wrapping after it would hide the corrected model list.
+    await healInputCapabilities(ctx);
     await applyVisibility(ctx.modelRegistry);
   });
 

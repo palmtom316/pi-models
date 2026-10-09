@@ -237,6 +237,13 @@ confirmed before their capabilities are used; `gpt-5` is never auto-upgraded to
    `disabled` / `enabled`, or a custom upstream value). *Reset to builtin /
    heuristic* re-derives everything from the id. `id`, `api`, `baseUrl`, and
    hand-written `cost` are never touched by the editor.
+- **Self-healing** — every `session_start` repairs stale entries: an id the
+   builtin table already knows is multimodal but whose record still says
+   `input: ["text"]` is upgraded to `["text", "image"]` (file rewritten +
+   backed up, then the running registry is patched, so images stop being
+   dropped immediately). The upgrade is one-way, and ids the builtin table does
+   not know, ids it marks text-only, and ids pinned via `modelOverrides` are
+   left alone.
 
 ### Per-model compat the wizard may set
 
@@ -557,6 +564,11 @@ deepseek 启发式兜底改成 text+image(只有 `deepseek-v4-pro` 保持纯文�
   隐藏、用档位名、`none` / `disabled` / `enabled`、或自定义上游值）。
   「重置为内置 / 启发式」按 id 重新推导全部参数。编辑器永远不动 `id`、
   `api`、`baseUrl` 和已手写的 `cost`。
+- **自愈** — 每次 `session_start` 修掉滞后条目：内置表已判定为多模态、但记录
+  里仍写着 `input: ["text"]` 的 id 会被升为 `["text", "image"]`（改写文件并
+  备份，同时修补运行中的 registry，图片当场不再被丢弃）。升级是单向的；内置表
+  未收录的 id、内置表标注为纯文本的 id、以及被 `modelOverrides` 钉住的 id 不
+  受影响。
 
 ### 向导可能写入的 per-model compat
 

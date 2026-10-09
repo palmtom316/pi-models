@@ -451,6 +451,7 @@ UI 必须标明不是 models.dev。数字抄最近官方家族，不是权威。
 5. `ctx.modelRegistry.getError()` 非空：展示 + 备份路径，提供回滚；确认后恢复旧文件（首次创建则删除）并再次 `refresh()`，不 `setModel`。
 6. 新模型出现在 `/model`；选中后走该模型 `api` + `baseUrl`。
 7. 重启仍在（因为写了文件）。
+8. 每次 `session_start` 做一次 **input 自愈**：若某 id 已被内置表判定为多模态、而存量条目仍写着 `input: ["text"]`，则先原子改写 `models.json`（含备份）再向 registry 注册一份 `getModels()` 已修正的包装，当场生效，不必等到下次启动。规则是单向升高（`["text"]` → `["text","image"]`），绝不降级；内置表未收录的 id、内置表标注为纯文本的 id、以及 `modelOverrides` 里显式钉住 `input` 的 id 一律不动。
 
 不要 `registerProvider` 用户刚写的 provider。
 
@@ -474,6 +475,7 @@ pi-models/
     models-dev.ts
     match.ts
     defaults.ts
+    caps-backfill.ts       # session_start: 存量 input 单向升高 + registry 包装
     fetch.ts
     url.ts
     sidecar.ts
@@ -487,6 +489,7 @@ pi-models/
     models-dev-map.test.ts
     match.test.ts
     merge-models-json.test.ts
+    caps-backfill.test.ts
     url-normalize.test.ts
     catalog-parse.test.ts
     fixtures/
