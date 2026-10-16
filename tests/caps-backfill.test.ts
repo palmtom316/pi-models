@@ -205,6 +205,50 @@ describe("registry patch", () => {
     assert.equal(await applyInputBackfill(registry), 0);
     assert.deepEqual(registered, ["-xjm"]);
   });
+
+  it("supports a class-style registry whose methods read `this` (Pi 1.x)", async () => {
+    // Pi 1.x hands extensions a facade whose methods delegate through `this.runtime`.
+    // Destructuring them into locals used to make every call throw
+    // "Cannot read properties of undefined (reading 'runtime')".
+    class ClassRegistry implements InputBackfillRegistry {
+      runtime = { label: "pi-1.x" };
+      readonly providers = new Map<string, Provider>([
+        ["xjm", provider("xjm", [model("deepseek-v4.1-flash", ["text"])])],
+      ]);
+      readonly registered: string[] = [];
+
+      private assertBound(): string {
+        if (!this?.runtime) throw new TypeError("registry method called without its receiver");
+        return this.runtime.label;
+      }
+
+      getProviders(): readonly Provider[] {
+        this.assertBound();
+        return [...this.providers.values()];
+      }
+
+      getProvider(id: string): Provider | undefined {
+        this.assertBound();
+        return this.providers.get(id);
+      }
+
+      registerProvider(next: Provider): void {
+        this.assertBound();
+        this.registered.push(next.id);
+        this.providers.set(next.id, next);
+      }
+
+      unregisterProvider(id: string): void {
+        this.assertBound();
+        this.registered.push(`-${id}`);
+      }
+    }
+
+    const registry = new ClassRegistry();
+    assert.equal(await applyInputBackfill(registry), 1);
+    assert.deepEqual(registry.registered, ["xjm"]);
+    assert.deepEqual(registry.providers.get("xjm")?.getModels()[0]?.input, ["text", "image"]);
+  });
 });
 
 describe("persistInputBackfill", () => {

@@ -136,8 +136,11 @@ export function wrapForInputBackfill(base: Provider): Provider {
  */
 export async function applyInputBackfill(registry: InputBackfillRegistry): Promise<number> {
   if (!registry.getProvider || !registry.registerProvider) return 0;
-  const getProvider = registry.getProvider;
-  const registerProvider = registry.registerProvider;
+  // Bind to the registry before extracting: Pi 1.x exposes these as class
+  // methods that read `this.runtime`, so a bare `const { getProvider } = registry`
+  // loses the receiver and throws "Cannot read properties of undefined (reading 'runtime')".
+  const getProvider = registry.getProvider.bind(registry);
+  const registerProvider = registry.registerProvider.bind(registry);
 
   const ids = registry.getProviders
     ? registry.getProviders().map((provider) => provider.id)
