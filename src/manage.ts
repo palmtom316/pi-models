@@ -18,7 +18,7 @@ import { recordToDraft } from "./caps.ts";
 import { readSidecar } from "./sidecar.ts";
 import { editDraft } from "./ui/edit-caps.ts";
 import type { PimUi } from "./ui/pim-ui.ts";
-import type { ModelsFile, PiApi } from "./types.ts";
+import type { ModelsFile, ModelRecord, PiApi } from "./types.ts";
 import { isHidden, setProviderHidden, applyVisibility, type VisibilityRegistry } from "./visibility.ts";
 import { t } from "./i18n.ts";
 
@@ -298,7 +298,7 @@ export async function wizardEditModels(ui: PimUi, ctx: RegistryCtx, file: Models
   );
   if (!selected || selected.length === 0) return;
 
-  const records = [];
+  const records: ModelRecord[] = [];
   for (const id of selected) {
     const model = models.find((m) => m.id === id);
     if (!model) continue;

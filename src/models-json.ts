@@ -129,13 +129,13 @@ function pick<T extends Record<string, unknown>>(obj: T, allowed: Set<string>): 
 }
 
 export function sanitizeModel(model: ModelRecord): ModelRecord {
-  const clean = pick(model as Record<string, unknown>, MODEL_KEYS) as ModelRecord;
+  const clean = pick(model as unknown as Record<string, unknown>, MODEL_KEYS) as unknown as ModelRecord;
   if (!clean.id) throw new Error("model.id is required");
   return clean;
 }
 
 export function sanitizeProvider(provider: ProviderRecord): ProviderRecord {
-  const clean = pick(provider as Record<string, unknown>, PROVIDER_KEYS) as ProviderRecord;
+  const clean = pick(provider as unknown as Record<string, unknown>, PROVIDER_KEYS) as unknown as ProviderRecord;
   if (clean.models) clean.models = clean.models.map(sanitizeModel);
   return clean;
 }
@@ -216,12 +216,12 @@ export function sinkThinkingCompat(provider: ProviderRecord): ProviderRecord {
     model.compat = model.compat ?? {};
     for (const key of THINKING_SINK_KEYS) {
       if (model.compat[key] == null && pcompat[key] != null) {
-        model.compat[key] = pcompat[key];
+        (model.compat as Record<string, unknown>)[key] = pcompat[key];
       }
     }
   }
   if (next.compat) {
-    for (const key of THINKING_SINK_KEYS) delete next.compat[key];
+    for (const key of THINKING_SINK_KEYS) delete (next.compat as Record<string, unknown>)[key];
     if (Object.keys(next.compat).length === 0) delete next.compat;
   }
   return next;

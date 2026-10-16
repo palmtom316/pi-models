@@ -25,6 +25,11 @@ import { FOOTER_SELECT_EXIT } from "./ui/dialogs.ts";
 import { maybeEditDrafts } from "./ui/edit-caps.ts";
 import { loadLang, saveLang, t, otherLang, getLang } from "./i18n.ts";
 
+/** The slice of the Pi session API the wizard uses to switch the active model. */
+export type ModelSwitcher = {
+  setModel: (model: import("@earendil-works/pi-ai").Model<any>) => Promise<boolean>;
+};
+
 export type CmdCtx = {
   mode: string;
   ui: {
@@ -34,7 +39,7 @@ export type CmdCtx = {
   modelRegistry: {
     refresh: () => Promise<unknown>;
     getError: () => string | undefined;
-    find: (provider: string, id: string) => unknown;
+    find: (provider: string, id: string) => import("@earendil-works/pi-ai").Model<any> | undefined;
     getApiKeyForProvider?: (providerId: string) => Promise<string | undefined> | string | undefined;
     getProvider?: (id: string) => import("@earendil-works/pi-ai").Provider | undefined;
     registerProvider?: (provider: import("@earendil-works/pi-ai").Provider) => void;
@@ -253,7 +258,7 @@ export async function persist(
   apiKey: string | undefined,
   drafts: ModelDraft[],
   mode: MergeMode,
-  pi?: { setModel: (model: unknown) => Promise<boolean> },
+  pi?: ModelSwitcher,
   replace?: Array<{ api: string; baseUrl: string }>,
 ): Promise<ModelsFile | undefined> {
   const tr = t();
@@ -319,7 +324,7 @@ export async function persist(
   return file;
 }
 
-export async function wizardNew(ctx: CmdCtx, ui: PimUi, file: ModelsFile, pi: { setModel: Function }): Promise<void> {
+export async function wizardNew(ctx: CmdCtx, ui: PimUi, file: ModelsFile, pi: ModelSwitcher): Promise<void> {
   const tr = t();
   let name: string | undefined;
   let api: PiApi | undefined;
@@ -418,7 +423,7 @@ function upsertDraft(list: ModelDraft[], draft: ModelDraft): void {
   else list.push(draft);
 }
 
-async function wizardAddApi(ctx: CmdCtx, ui: PimUi, file: ModelsFile, pi: { setModel: Function }): Promise<void> {
+async function wizardAddApi(ctx: CmdCtx, ui: PimUi, file: ModelsFile, pi: ModelSwitcher): Promise<void> {
   const tr = t();
   const names = listExistingProviders(file);
   if (names.length === 0) {
@@ -568,7 +573,7 @@ function parseModelChoice(value: string): { provider: string; id: string } | und
 export async function wizardSwitchDefault(
   ctx: CmdCtx,
   ui: PimUi,
-  pi: { setModel: (model: unknown) => Promise<boolean> },
+  pi: ModelSwitcher,
 ): Promise<void> {
   const tr = t();
   const file = await readModelsFile();
@@ -653,7 +658,7 @@ export function mainMenuOptions(): string[] {
   ];
 }
 
-export async function runMainMenu(ctx: CmdCtx, ui: PimUi, pi: { setModel: Function }): Promise<void> {
+export async function runMainMenu(ctx: CmdCtx, ui: PimUi, pi: ModelSwitcher): Promise<void> {
   while (true) {
     const tr = t();
     // Snapshot dispatch labels each loop — menuLang depends on the current
@@ -692,7 +697,7 @@ export async function runMainMenu(ctx: CmdCtx, ui: PimUi, pi: { setModel: Functi
   }
 }
 
-export async function runWizard(ctx: CmdCtx, pi: { setModel: Function }): Promise<void> {
+export async function runWizard(ctx: CmdCtx, pi: ModelSwitcher): Promise<void> {
   if (failNonTui(ctx)) return;
   await loadLang();
   await runMainMenu(ctx, createPimUi(ctx), pi);

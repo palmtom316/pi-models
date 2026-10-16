@@ -1,4 +1,4 @@
-import type { Model, Provider } from "@earendil-works/pi-ai";
+import type { Api, Model, Provider } from "@earendil-works/pi-ai";
 import { officialInput } from "./defaults.ts";
 import { mutateModelsFile, readModelsFile } from "./models-json.ts";
 import { matchBuiltin } from "./resolve.ts";
@@ -95,15 +95,15 @@ export function describeChanges(changes: readonly InputBackfillChange[], max = 3
 /** Registry view: patch `getModels()` so this session sees the corrected input. */
 export interface InputBackfillRegistry {
   getProviders?: () => readonly Provider[];
-  getProvider: (id: string) => Provider | undefined;
-  registerProvider: (provider: Provider) => void;
+  getProvider?: (id: string) => Provider | undefined;
+  registerProvider?: (provider: Provider) => void;
   unregisterProvider?: (id: string) => void;
 }
 
 /** Providers this extension has wrapped with a catalog-corrected model list. */
 const wrappedInputs = new Set<string>();
 
-function patchModels(models: readonly Model[]): readonly Model[] {
+function patchModels(models: readonly Model<Api>[]): readonly Model<Api>[] {
   let changed = false;
   const next = models.map((model) => {
     const to = backfilledInput(model.id, model.input);
@@ -114,7 +114,7 @@ function patchModels(models: readonly Model[]): readonly Model[] {
   return changed ? next : models;
 }
 
-export function needsInputBackfill(models: readonly Model[]): boolean {
+export function needsInputBackfill(models: readonly Model<Api>[]): boolean {
   return patchModels(models) !== models;
 }
 
@@ -135,19 +135,23 @@ export function wrapForInputBackfill(base: Provider): Provider {
  * current composed provider, and ids that no longer need it are unwrapped.
  */
 export async function applyInputBackfill(registry: InputBackfillRegistry): Promise<number> {
+  if (!registry.getProvider || !registry.registerProvider) return 0;
+  const getProvider = registry.getProvider;
+  const registerProvider = registry.registerProvider;
+
   const ids = registry.getProviders
     ? registry.getProviders().map((provider) => provider.id)
     : Object.keys((await readModelsFile()).providers);
 
   let patched = 0;
   for (const id of ids) {
-    const base = registry.getProvider(id);
+    const base = getProvider(id);
     if (!base) continue;
     if (!needsInputBackfill(base.getModels())) {
       if (wrappedInputs.delete(id)) registry.unregisterProvider?.(id);
       continue;
     }
-    registry.registerProvider(wrapForInputBackfill(base));
+    registerProvider(wrapForInputBackfill(base));
     wrappedInputs.add(id);
     patched++;
   }

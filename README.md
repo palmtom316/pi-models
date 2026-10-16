@@ -53,7 +53,7 @@ This package writes **your** `models.json`. It does not talk to CC-Switch — th
 
 ### Requirements
 
-- Pi **≥ 0.84.2** and Node **≥ 22.19.0**
+- Pi **≥ 0.84.2** (verified on 0.84.2 and 1.3.0, including 1.x) and Node **≥ 22.19.0**
 - Interactive TUI only — print / json / rpc modes refuse to write anything
 
 ### Install
@@ -405,7 +405,7 @@ GitHub Actions runs tests and `npm publish`. The tag must be `v` plus the `packa
 
 ### 环境要求
 
-- Pi **≥ 0.84.2**，Node **≥ 22.19.0**
+- Pi **≥ 0.84.2**（已在 0.84.2 与 1.3.0 上验证，含 1.x），Node **≥ 22.19.0**
 - 仅交互式 TUI 可用 —— print / json / rpc 模式一律拒绝写盘
 
 ### 安装

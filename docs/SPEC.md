@@ -40,7 +40,9 @@
 
 ## 4. 基线契约
 
-- Pi：`@earendil-works/pi-coding-agent` **0.84.2** 或兼容。
+- Pi：`@earendil-works/pi-coding-agent` **≥ 0.84.2 <2**（已在 0.84.2 与 1.3.0 上验证）。
+  `@earendil-works/pi-ai` 的类型形状在 0.84.2 与 1.3.0 一致（`Model<TApi>`、`Provider.getModels()`、
+  `filterModels(models, credential: Credential | undefined)`），故两个大版本共用同一份源码。
 - 官方接口：`registerCommand`、`setModel`、`ctx.modelRegistry.refresh()` / `getError()`、`ctx.ui.*`。`registerProvider` 不用于主路径。`ctx.reload()` 仅开发热加载。
 - 路径用 `getAgentDir()`（尊重 `PI_CODING_AGENT_DIR`），不要写死 `~/.pi/agent`。
   - `models.json` → `{agentDir}/models.json`

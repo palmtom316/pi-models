@@ -1,4 +1,4 @@
-import type { Model, Provider } from "@earendil-works/pi-ai";
+import type { Credential, Model, Provider } from "@earendil-works/pi-ai";
 import { readSidecar, writeSidecar } from "./sidecar.ts";
 
 export type VisibilityRegistry = {
@@ -21,8 +21,8 @@ export function isHidden(hidden: readonly string[] | undefined, providerId: stri
 export function hideChatModels<TApi extends string>(
   hidden: boolean,
   models: readonly Model<TApi>[],
-  credential: unknown,
-  base?: (models: readonly Model<TApi>[], credential: unknown) => readonly Model<TApi>[],
+  credential: Credential | undefined,
+  base?: (models: readonly Model<TApi>[], credential: Credential | undefined) => readonly Model<TApi>[],
 ): readonly Model<TApi>[] {
   const filtered = base?.(models, credential) ?? models;
   return hidden ? [] : filtered;

@@ -44,7 +44,7 @@ export function extractOfficial(raw: unknown): OfficialCatalog {
       const slim: OfficialModel = { id: typeof src.id === "string" ? src.id : id };
       for (const key of FIELDS) {
         if (key === "id") continue;
-        if (key in src) (slim as Record<string, unknown>)[key] = src[key];
+        if (key in src) (slim as unknown as Record<string, unknown>)[key] = src[key];
       }
       models[id] = slim;
     }
