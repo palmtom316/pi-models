@@ -424,8 +424,8 @@ A mismatch (wrong owner/repo/filename/environment) shows up as `E404` on publish
 Then a release is one command:
 
 ```sh
-npm run release patch     # or minor / major, or an explicit version like 0.5.0
-npm run release 0.5.0 --dry   # preview without changing anything
+npm run release patch            # or minor / major, or an explicit version like 0.5.0
+npm run release 0.5.0 --preview  # show what would happen, change nothing
 ```
 
 It bumps `package.json` + `package-lock.json`, runs the tests, commits, tags `v<version>`, and pushes
@@ -797,8 +797,8 @@ pi install git:github.com/palmtom316/pi-models
 之后发布就一条命令：
 
 ```sh
-npm run release patch     # 也可以 minor / major，或直接写版本号 0.5.0
-npm run release 0.5.0 --dry   # 只看会做什么，不改任何东西
+npm run release patch            # 也可以 minor / major，或直接写版本号 0.5.0
+npm run release 0.5.0 --preview  # 只看会做什么，不改任何东西
 ```
 
 它会改 `package.json` 和 `package-lock.json` 的版本号、跑测试、提交、打 `v<版本>` tag，然后把
