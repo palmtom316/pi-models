@@ -20,7 +20,9 @@ const dry = args.includes("--dry") || args.includes("--dry-run");
 const wanted = args.filter((a) => !a.startsWith("-"))[0];
 
 function run(cmd, cmdArgs, opts = {}) {
-  return execFileSync(cmd, cmdArgs, { cwd: root, encoding: "utf8", ...opts }).trim();
+  const out = execFileSync(cmd, cmdArgs, { cwd: root, encoding: "utf8", ...opts });
+  // With `stdio: "inherit"` execFileSync returns null instead of a string.
+  return typeof out === "string" ? out.trim() : "";
 }
 
 function fail(message) {
