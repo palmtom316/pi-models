@@ -1,6 +1,6 @@
 {
   "name": "@palmtom/pi-models",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Pi TUI overlay wizard: manage models.json providers (add a relay or gateway, fetch /models, edit capabilities) and review token usage by provider/model",
   "keywords": [
     "pi-package",
