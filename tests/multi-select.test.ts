@@ -104,15 +104,55 @@ describe("multi-select bulk actions", () => {
     assert.deepEqual(checked(session), ["gpt-5"]);
   });
 
-  it("enter confirms and esc cancels, while filter esc only clears the query", () => {
+  it("esc cancels immediately, and enter refuses an empty selection", () => {
     const session = createMultiSelectSession(items());
     handleMultiSelectInput(session, "g");
     assert.equal(session.filter, "g");
     assert.deepEqual(visibleItems(session).map((item) => item.value), ["gpt-5"]);
-    assert.equal(handleMultiSelectInput(session, ESC), "pending");
-    assert.equal(session.filter, "");
     assert.equal(handleMultiSelectInput(session, ESC), "cancel");
-    assert.equal(handleMultiSelectInput(session, ENTER), "confirm");
+
+    const empty = createMultiSelectSession(items());
+    empty.checked.clear();
+    assert.equal(handleMultiSelectInput(empty, ENTER), "pending");
+    assert.equal(empty.notice, t().multiSelectNothing);
+    empty.checked.add("gpt-5");
+    assert.equal(handleMultiSelectInput(empty, ENTER), "confirm");
+  });
+
+  it("enter on the action bar runs that action instead of confirming", () => {
+    const session = createMultiSelectSession(items());
+    handleMultiSelectInput(session, UP);
+    assert.equal(session.focus, "bulk");
+    handleMultiSelectInput(session, RIGHT);
+    assert.equal(session.bulkIndex, 1);
+    assert.equal(handleMultiSelectInput(session, ENTER), "pending");
+    assert.deepEqual(checked(session), ["claude-opus"]);
+    assert.equal(session.focus, "bulk");
+  });
+
+  it("typing while the action bar has focus does not filter the list", () => {
+    const session = createMultiSelectSession(items());
+    handleMultiSelectInput(session, UP);
+    assert.equal(session.focus, "bulk");
+    handleMultiSelectInput(session, "g");
+    assert.equal(session.filter, "");
+    assert.equal(visibleItems(session).length, 2);
+  });
+
+  it("home / end / page keys move the cursor without leaving the list", () => {
+    const many: MultiSelectItem[] = Array.from({ length: 30 }, (_, i) => ({
+      value: `m${i}`,
+      label: `m${i}`,
+    }));
+    const session = createMultiSelectSession(many);
+    handleMultiSelectInput(session, "\x1b[6~");
+    assert.equal(session.cursor, 10);
+    handleMultiSelectInput(session, "\x1b[F");
+    assert.equal(session.cursor, 29);
+    handleMultiSelectInput(session, "\x1b[H");
+    assert.equal(session.cursor, 0);
+    handleMultiSelectInput(session, "\x1b[5~");
+    assert.equal(session.cursor, 0);
   });
 
   it("ctrl+h reveals hidden models; backspace edits the filter", () => {

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { PIM_OVERLAY_OPTIONS, PIM_OVERLAY_RATIO, renderPimWindow, targetOverlayHeight } from "../src/ui/window.ts";
+import { PIM_OVERLAY_OPTIONS, PIM_OVERLAY_RATIO, renderPimWindow, subtitleRows, targetOverlayHeight, windowBodyRows, windowChromeRows } from "../src/ui/window.ts";
 
 const theme = {
   fg: (_c: string, t: string) => t,
@@ -51,7 +51,7 @@ describe("70% overlay window", () => {
     assert.equal(lines.length, 21);
   });
 
-  it("one-line filters multi-line subtitles", () => {
+  it("keeps multi-line subtitles as separate rows", () => {
     const lines = renderPimWindow({
       theme,
       termRows: 20,
@@ -61,7 +61,27 @@ describe("70% overlay window", () => {
       body: ["x"],
       footer: "esc",
     });
+    // 20*0.7=14 rows total; chrome = 4 + 3 subtitle rows = 7; body = 7.
     assert.equal(lines.length, 14);
+    assert.equal(lines[1]!.includes("line one"), true);
+    assert.equal(lines[2]!.includes("line two"), true);
+    assert.equal(lines[3]!.includes("line three"), true);
+    assert.equal(windowBodyRows(20, "a\nb\nc"), 7);
     for (const line of lines) assert(line!.length <= 40);
+  });
+
+  it("accepts a subtitle array and drops trailing blanks", () => {
+    const lines = renderPimWindow({
+      theme,
+      termRows: 20,
+      width: 40,
+      title: "t",
+      subtitle: ["a", "", "b", ""],
+      body: ["x"],
+      footer: "esc",
+    });
+    assert.deepEqual(subtitleRows(["a", "", "b", ""]), ["a", "", "b"]);
+    assert.equal(lines.length, 14);
+    assert.equal(windowChromeRows(["a", "", "b"]), 7);
   });
 });

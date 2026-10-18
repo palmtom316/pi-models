@@ -27,7 +27,7 @@ describe("wizard boundaries", () => {
       loader: async () => ({ ok: true, items: [], tried: [] }),
       input: async () => "gpt-5.6-sol",
       multiSelect: async () => ["gpt-5.6-sol"],
-      select: async () => "skip (keep defaults)",
+      select: async () => "skip",
       confirm: async () => true,
       notify: () => undefined,
     } as unknown as PimUi;

@@ -23,6 +23,30 @@ export function targetOverlayHeight(termRows: number): number {
   return Math.max(PIM_OVERLAY_MIN_HEIGHT, Math.floor(termRows * PIM_OVERLAY_RATIO));
 }
 
+/**
+ * Split a subtitle into one-line rows. Each entry is collapsed to a single
+ * line so a caller can pass a multi-line block without breaking the border.
+ */
+export function subtitleRows(subtitle?: string | string[]): string[] {
+  if (subtitle === undefined) return [];
+  const raw = Array.isArray(subtitle) ? subtitle : [subtitle];
+  const rows = raw
+    .flatMap((line) => String(line).split("\n"))
+    .map((line) => line.replace(/\s+/g, " ").trim());
+  while (rows.length > 0 && rows[rows.length - 1] === "") rows.pop();
+  return rows;
+}
+
+/** Border + title + subtitle + separator + footer = the rows the frame eats. */
+export function windowChromeRows(subtitle?: string | string[]): number {
+  return 4 + subtitleRows(subtitle).length;
+}
+
+/** Body rows `renderPimWindow` will actually paint for this terminal height. */
+export function windowBodyRows(termRows: number, subtitle?: string | string[]): number {
+  return Math.max(1, targetOverlayHeight(termRows) - windowChromeRows(subtitle));
+}
+
 export function listTheme(theme: ThemeLike) {
   return {
     selectedPrefix: (t: string) => theme.fg("accent", t),
@@ -48,7 +72,7 @@ export function renderPimWindow(opts: {
   termRows: number;
   width: number;
   title: string;
-  subtitle?: string;
+  subtitle?: string | string[];
   body: string[];
   footer: string;
 }): string[] {
@@ -56,8 +80,8 @@ export function renderPimWindow(opts: {
   const width = Math.max(8, opts.width);
   const inner = Math.max(1, width - 2);
   const total = targetOverlayHeight(opts.termRows);
-  const chrome = opts.subtitle ? 5 : 4;
-  const bodyH = Math.max(1, total - chrome);
+  const subtitle = subtitleRows(opts.subtitle);
+  const bodyH = Math.max(1, total - windowChromeRows(opts.subtitle));
 
   const body = opts.body.slice(0, bodyH);
   while (body.length < bodyH) body.push("");
@@ -71,8 +95,8 @@ export function renderPimWindow(opts: {
   const side = (content: string) => border("│") + padVisible(content, inner) + border("│");
 
   const lines = [top];
-  if (opts.subtitle) {
-    lines.push(side(theme.fg("muted", truncateToWidth(opts.subtitle.replace(/\s+/g, " "), inner))));
+  for (const row of subtitle) {
+    lines.push(side(theme.fg("muted", truncateToWidth(row, inner))));
   }
   for (const row of body) {
     lines.push(side(row));

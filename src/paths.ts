@@ -23,6 +23,10 @@ export function getSidecarPath(): string {
   return join(agentDir(), "pim-models.json");
 }
 
+export function getSessionsDirPath(): string {
+  return join(agentDir(), "sessions");
+}
+
 export function getSettingsJsonPath(): string {
   return join(agentDir(), "settings.json");
 }

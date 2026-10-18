@@ -17,8 +17,8 @@ import { resolveDrafts } from "./resolve.ts";
 import { recordToDraft } from "./caps.ts";
 import { readSidecar } from "./sidecar.ts";
 import { editDraft } from "./ui/edit-caps.ts";
-import type { PimUi } from "./ui/pim-ui.ts";
-import type { ModelsFile, ModelRecord, PiApi } from "./types.ts";
+import type { PimOption, PimUi } from "./ui/pim-ui.ts";
+import type { ModelsFile, PiApi, ProviderRecord } from "./types.ts";
 import { isHidden, setProviderHidden, applyVisibility, type VisibilityRegistry } from "./visibility.ts";
 import { t } from "./i18n.ts";
 
@@ -50,6 +50,7 @@ export async function persistFile(
     const restore = await ui.confirm(
       tr.confirmRollback,
       backupPath ? tr.confirmRollbackRestore(backupPath) : tr.confirmRollbackRemove,
+      { danger: true },
     );
     if (restore === true) {
       await rollbackModelsFile(backupPath);
@@ -63,19 +64,34 @@ export async function persistFile(
   return file;
 }
 
-async function pickProvider(ui: PimUi, file: ModelsFile, hidden?: ReadonlySet<string>): Promise<string | undefined> {
+/** Provider rows for any picker: the value is the provider id, the label is the id. */
+export async function providerOptions(file: ModelsFile, hidden?: ReadonlySet<string>): Promise<PimOption[]> {
   const tr = t();
-  const names = listExistingProviders(file);
-  if (names.length === 0) {
+  const sidecarHidden = hidden ?? new Set((await readSidecar()).hiddenProviders ?? []);
+  return listExistingProviders(file).map((name) => {
+    const provider = file.providers[name];
+    const count = provider?.models?.length ?? 0;
+    return {
+      value: name,
+      label: name,
+      description: tr.providerStatus(count, provider?.api ?? "?", sidecarHidden.has(name)),
+    };
+  });
+}
+
+/** Ask which provider to act on. Returns the provider id, never a display label. */
+export async function pickProvider(
+  ui: PimUi,
+  file: ModelsFile,
+  subtitle?: string,
+): Promise<string | undefined> {
+  const tr = t();
+  const options = await providerOptions(file);
+  if (options.length === 0) {
     ui.notify(tr.noProvidersInFile, "warning");
     return undefined;
   }
-  return ui.select(tr.selectProvider, names.map((name) => hidden?.has(name) ? `${name}  (${tr.providerHiddenMark})` : name));
-}
-
-function providerFromLabel(label: string | undefined, names: readonly string[]): string | undefined {
-  if (!label) return undefined;
-  return names.find((name) => label === name || label.startsWith(`${name}  (`));
+  return ui.select(tr.selectProvider, options, subtitle);
 }
 
 async function visibilityOf(ctx: RegistryCtx): Promise<VisibilityRegistry | undefined> {
@@ -88,33 +104,50 @@ async function visibilityOf(ctx: RegistryCtx): Promise<VisibilityRegistry | unde
   };
 }
 
-export async function wizardBackupProvider(ui: PimUi, file: ModelsFile): Promise<void> {
+async function refreshVisibility(ctx: RegistryCtx): Promise<void> {
+  const registry = await visibilityOf(ctx);
+  if (registry) await applyVisibility(registry);
+}
+
+export async function wizardBackupProvider(ui: PimUi, file: ModelsFile, providerName?: string): Promise<void> {
   const tr = t();
-  const label = await pickProvider(ui, file);
-  const name = providerFromLabel(label, listExistingProviders(file));
+  const name = providerName ?? await pickProvider(ui, file);
   if (!name) return;
   const path = await writeProviderBackup(file, name);
   ui.notify(tr.backedUpProvider(name, path), "info");
 }
 
-export async function wizardDeleteProvider(ui: PimUi, ctx: RegistryCtx, file: ModelsFile): Promise<void> {
+export async function wizardDeleteProvider(
+  ui: PimUi,
+  ctx: RegistryCtx,
+  file: ModelsFile,
+  providerName?: string,
+): Promise<void> {
   const tr = t();
-  const label = await pickProvider(ui, file);
-  const name = providerFromLabel(label, listExistingProviders(file));
+  const name = providerName ?? await pickProvider(ui, file);
   if (!name) return;
   const count = file.providers[name]?.models?.length ?? 0;
-  const ok = await ui.confirm(tr.confirmDeleteProvider, tr.confirmDeleteProviderMsg(name, count));
+  const ok = await ui.confirm(
+    tr.confirmDeleteProvider,
+    tr.confirmDeleteProviderMsg(name, count),
+    { danger: true },
+  );
   if (ok !== true) return;
   const backup = await writeProviderBackup(file, name);
   await persistFile(ui, ctx, (current) => deleteProvider(current, name), tr.deletedProvider(name, backup));
 }
 
-export async function wizardDeleteModels(ui: PimUi, ctx: RegistryCtx, file: ModelsFile): Promise<void> {
+export async function wizardDeleteModels(
+  ui: PimUi,
+  ctx: RegistryCtx,
+  file: ModelsFile,
+  providerName?: string,
+): Promise<void> {
   const tr = t();
-  const label = await pickProvider(ui, file);
-  const name = providerFromLabel(label, listExistingProviders(file));
+  const name = providerName ?? await pickProvider(ui, file);
   if (!name) return;
-  const models = file.providers[name]?.models ?? [];
+  const provider = file.providers[name];
+  const models = provider?.models ?? [];
   if (models.length === 0) {
     ui.notify(tr.noModels(name), "warning");
     return;
@@ -124,17 +157,26 @@ export async function wizardDeleteModels(ui: PimUi, ctx: RegistryCtx, file: Mode
     models.map((m) => ({
       value: m.id,
       label: m.id,
-      description: `${m.api ?? file.providers[name]?.api ?? "?"}  ${m.contextWindow ?? "?"}/${m.maxTokens ?? "?"}`,
+      description: `${m.api ?? provider?.api ?? "?"}  ${m.contextWindow ?? "?"}/${m.maxTokens ?? "?"}`,
     })),
   );
   if (!selected || selected.length === 0) return;
-  const ok = await ui.confirm(tr.confirmDeleteModels, tr.confirmDeleteModelsMsg(selected.length, name, selected));
+  const ok = await ui.confirm(
+    tr.confirmDeleteModels,
+    tr.confirmDeleteModelsMsg(selected.length, name, selected),
+    { danger: true },
+  );
   if (ok !== true) return;
   await writeProviderBackup(file, name);
   await persistFile(ui, ctx, (current) => deleteModels(current, name, selected), tr.deletedModels(selected.length, name));
 }
 
-export async function wizardHideProvider(ui: PimUi, ctx: RegistryCtx, file: ModelsFile): Promise<void> {
+export async function wizardHideProvider(
+  ui: PimUi,
+  ctx: RegistryCtx,
+  file: ModelsFile,
+  providerName?: string,
+): Promise<void> {
   const tr = t();
   const hidden = new Set((await readSidecar()).hiddenProviders ?? []);
   const names = listExistingProviders(file);
@@ -147,29 +189,55 @@ export async function wizardHideProvider(ui: PimUi, ctx: RegistryCtx, file: Mode
     ui.notify(tr.hideProviderNone, "warning");
     return;
   }
-  const name = await ui.select(tr.hideProviderTitle, visible);
+  let name = providerName;
+  if (!name) {
+    name = await ui.select(
+      tr.hideProviderTitle,
+      visible.map((id) => ({ value: id, label: id })),
+    );
+  }
   if (!name) return;
   const count = file.providers[name]?.models?.length ?? 0;
   const ok = await ui.confirm(tr.confirmHideProvider, tr.confirmHideProviderMsg(name, count));
   if (ok !== true) return;
   await setProviderHidden(name, true);
-  const registry = await visibilityOf(ctx);
-  if (registry) await applyVisibility(registry);
+  await refreshVisibility(ctx);
   ui.notify(tr.hiddenProvider(name), "info");
 }
 
-export async function wizardUnhideProvider(ui: PimUi, ctx: RegistryCtx): Promise<void> {
+export async function wizardUnhideProvider(
+  ui: PimUi,
+  ctx: RegistryCtx,
+  providerName?: string,
+): Promise<void> {
   const tr = t();
   const hidden = (await readSidecar()).hiddenProviders ?? [];
   if (hidden.length === 0) {
     ui.notify(tr.unhideProviderNone, "warning");
     return;
   }
-  const name = await ui.select(tr.unhideProviderTitle, hidden);
+  // Only offer providers that still exist in models.json; a stale sidecar id
+  // would look selectable but silently do nothing.
+  const existing = new Set(listExistingProviders(await readModelsFile()));
+  const usable = hidden.filter((id) => existing.has(id));
+  const stale = hidden.filter((id) => !existing.has(id));
+  if (stale.length > 0) {
+    ui.notify(tr.unhideStale(stale.join(", ")), "warning");
+    for (const id of stale) await setProviderHidden(id, false);
+  }
+  if (usable.length === 0) {
+    ui.notify(tr.unhideProviderNone, "warning");
+    return;
+  }
+  const name = providerName && usable.includes(providerName)
+    ? providerName
+    : await ui.select(
+      tr.unhideProviderTitle,
+      usable.map((id) => ({ value: id, label: id })),
+    );
   if (!name || !isHidden(hidden, name)) return;
   await setProviderHidden(name, false);
-  const registry = await visibilityOf(ctx);
-  if (registry) await applyVisibility(registry);
+  await refreshVisibility(ctx);
   ui.notify(tr.unhiddenProvider(name), "info");
 }
 
@@ -186,11 +254,14 @@ function endpointLabel(endpoint: EndpointRef, count: number): string {
   return `${endpoint.api}  ${endpoint.baseUrl}  (${count})`;
 }
 
-export async function wizardRefreshModels(ui: PimUi, ctx: RegistryCtx, file: ModelsFile): Promise<ModelsFile | undefined> {
+export async function wizardRefreshModels(
+  ui: PimUi,
+  ctx: RegistryCtx,
+  file: ModelsFile,
+  providerName?: string,
+): Promise<ModelsFile | undefined> {
   const tr = t();
-  const names = listExistingProviders(file);
-  const label = await pickProvider(ui, file, new Set((await readSidecar()).hiddenProviders ?? []));
-  const name = providerFromLabel(label, names);
+  const name = providerName ?? await pickProvider(ui, file);
   if (!name) return undefined;
   const provider = file.providers[name];
   const endpoints = providerEndpoints(provider);
@@ -205,7 +276,10 @@ export async function wizardRefreshModels(ui: PimUi, ctx: RegistryCtx, file: Mod
   ]));
   const chosen = endpoints.length === 1
     ? endpoints[0]
-    : counts.get(await ui.select(tr.refreshEndpointTitle(name), [...counts.keys()]) ?? "");
+    : counts.get(await ui.select(
+        tr.refreshEndpointTitle(name),
+        [...counts.keys()].map((label) => ({ value: label, label })),
+      ) ?? "");
   if (!chosen) return undefined;
 
   const apiKey = await resolveApiKey(ui, ctx, name, provider?.apiKey);
@@ -248,11 +322,12 @@ export async function wizardRefreshModels(ui: PimUi, ctx: RegistryCtx, file: Mod
     }));
   if (selectedAdds === undefined) return undefined;
 
+  // Removals are opt-in: nothing is pre-checked, so Enter never deletes.
   const selectedRemoves = plan.removable.length === 0
     ? []
     : await ui.multiSelect(
       tr.refreshRemovedTitle(name),
-      plan.removable.map((model) => ({ value: model.id, label: model.id, checked: true })),
+      plan.removable.map((model) => ({ value: model.id, label: model.id })),
     );
   if (selectedRemoves === undefined) return undefined;
   if (selectedAdds.length === 0 && selectedRemoves.length === 0) {
@@ -277,59 +352,136 @@ export async function wizardRefreshModels(ui: PimUi, ctx: RegistryCtx, file: Mod
   }, tr.refreshedModels(drafts.length, selectedRemoves.length, name));
 }
 
-export async function wizardEditModels(ui: PimUi, ctx: RegistryCtx, file: ModelsFile): Promise<void> {
+/**
+ * Model list for one provider. Selecting a model opens its capability editor,
+ * which is what the old read-only "View" screen was missing.
+ */
+export async function wizardModels(
+  ui: PimUi,
+  ctx: RegistryCtx,
+  file: ModelsFile,
+  providerName: string,
+): Promise<void> {
   const tr = t();
-  const label = await pickProvider(ui, file);
-  const name = providerFromLabel(label, listExistingProviders(file));
-  if (!name) return;
-  const provider = file.providers[name];
-  const models = provider?.models ?? [];
-  if (!provider || models.length === 0) {
-    ui.notify(tr.noModels(name), "warning");
-    return;
-  }
-  const selected = await ui.multiSelect(
-    tr.editModelsTitle(name),
-    models.map((m) => ({
-      value: m.id,
-      label: m.id,
-      description: `${m.name ?? ""}  ${m.contextWindow ?? "?"}/${m.maxTokens ?? "?"}`,
-    })),
-  );
-  if (!selected || selected.length === 0) return;
-
-  const records: ModelRecord[] = [];
-  for (const id of selected) {
-    const model = models.find((m) => m.id === id);
+  while (true) {
+    const current = await readModelsFile();
+    const provider: ProviderRecord | undefined = current.providers[providerName];
+    const models = provider?.models ?? [];
+    if (!provider || models.length === 0) {
+      ui.notify(tr.noModels(providerName), "warning");
+      return;
+    }
+    const choice = await ui.select(
+      tr.modelsTitle(providerName),
+      models.map((m) => ({
+        value: m.id,
+        label: m.id,
+        description: [
+          `${m.contextWindow ?? "?"}/${m.maxTokens ?? "?"}`,
+          m.api ?? provider.api ?? "?",
+          m.name && m.name !== m.id ? m.name : "",
+        ].filter(Boolean).join("  "),
+      })),
+      tr.modelsSubtitle,
+    );
+    if (!choice) return;
+    const model = models.find((m) => m.id === choice);
     if (!model) continue;
     const edited = await editDraft(ui, recordToDraft(model, provider));
-    if (!edited) return;
-    records.push(draftToRecord(edited));
+    if (!edited) continue;
+    await persistFile(
+      ui,
+      ctx,
+      (file) => replaceModelRecords(file, providerName, [draftToRecord(edited)]),
+      tr.editedModel(providerName, edited.id),
+    );
   }
-  await persistFile(ui, ctx, (current) => replaceModelRecords(current, name, records), tr.editModelsTitle(name));
 }
 
-export async function runManageMenu(ui: PimUi, ctx: RegistryCtx): Promise<void> {
+/** @deprecated kept for callers that still pass a file: use wizardModels with a provider name. */
+export async function wizardEditModels(ui: PimUi, ctx: RegistryCtx, file: ModelsFile): Promise<void> {
+  const name = await pickProvider(ui, file);
+  if (!name) return;
+  await wizardModels(ui, ctx, file, name);
+}
+
+/** Per-provider action menu: everything that used to live in "Manage". */
+export async function runProviderActions(
+  ui: PimUi,
+  ctx: RegistryCtx,
+  providerName: string,
+  pi?: { setModel: (model: unknown) => Promise<boolean> },
+): Promise<void> {
+  const tr = t();
   while (true) {
-    const tr = t();
     const file = await readModelsFile();
-    const action = await ui.select(tr.manageTitle, [
-      tr.manageBackup,
-      tr.manageHideProvider,
-      tr.manageUnhideProvider,
-      tr.manageRefreshModels,
-      tr.manageDeleteProvider,
-      tr.manageDeleteModels,
-      tr.manageEditCaps,
-      tr.manageBack,
-    ]);
-    if (!action || action === tr.manageBack) return;
-    if (action === tr.manageBackup) await wizardBackupProvider(ui, file);
-    else if (action === tr.manageHideProvider) await wizardHideProvider(ui, ctx, file);
-    else if (action === tr.manageUnhideProvider) await wizardUnhideProvider(ui, ctx);
-    else if (action === tr.manageRefreshModels) await wizardRefreshModels(ui, ctx, file);
-    else if (action === tr.manageDeleteProvider) await wizardDeleteProvider(ui, ctx, file);
-    else if (action === tr.manageDeleteModels) await wizardDeleteModels(ui, ctx, file);
-    else if (action === tr.manageEditCaps) await wizardEditModels(ui, ctx, file);
+    const provider = file.providers[providerName];
+    if (!provider) return;
+    const hidden = isHidden((await readSidecar()).hiddenProviders ?? [], providerName);
+    const count = provider.models?.length ?? 0;
+    const options: PimOption[] = [
+      { value: "models", label: tr.providerModels, description: tr.providerModelsDesc },
+      { value: "default", label: tr.providerSetDefault, description: tr.providerSetDefaultDesc },
+      { value: "add", label: tr.providerAddApi, description: tr.providerAddApiDesc },
+      { value: "refresh", label: tr.providerRefresh, description: tr.providerRefreshDesc },
+      hidden
+        ? { value: "unhide", label: tr.providerUnhide, description: tr.providerUnhideDesc }
+        : { value: "hide", label: tr.providerHide, description: tr.providerHideDesc },
+      { value: "backup", label: tr.providerBackup, description: tr.providerBackupDesc },
+      { value: "deleteModels", label: tr.providerDeleteModels, description: tr.providerDeleteModelsDesc },
+      {
+        value: "deleteProvider",
+        label: tr.providerDeleteProvider,
+        description: tr.providerDeleteProviderDesc,
+        danger: true,
+      },
+    ];
+    const action = await ui.select(
+      providerName,
+      options,
+      tr.providerStatus(count, provider.api ?? "?", hidden),
+    );
+    if (!action) return;
+    if (action === "models") await wizardModels(ui, ctx, file, providerName);
+    else if (action === "default") {
+      const { wizardSwitchDefault } = await import("./wizard.ts");
+      await wizardSwitchDefault(ctx as never, ui, pi ?? { setModel: async () => false }, providerName);
+    } else if (action === "add") {
+      const { wizardAddApi } = await import("./wizard.ts");
+      await wizardAddApi(ctx as never, ui, file, pi ?? { setModel: async () => false }, providerName);
+    } else if (action === "refresh") await wizardRefreshModels(ui, ctx, file, providerName);
+    else if (action === "hide") await wizardHideProvider(ui, ctx, file, providerName);
+    else if (action === "unhide") await wizardUnhideProvider(ui, ctx, providerName);
+    else if (action === "backup") await wizardBackupProvider(ui, file, providerName);
+    else if (action === "deleteModels") await wizardDeleteModels(ui, ctx, file, providerName);
+    else if (action === "deleteProvider") {
+      await wizardDeleteProvider(ui, ctx, file, providerName);
+      return;
+    }
   }
+}
+
+/** Provider list → per-provider actions. Replaces both "View" and "Manage". */
+export async function runProvidersMenu(
+  ui: PimUi,
+  ctx: RegistryCtx,
+  pi?: { setModel: (model: unknown) => Promise<boolean> },
+): Promise<void> {
+  const tr = t();
+  while (true) {
+    const file = await readModelsFile();
+    const options = await providerOptions(file);
+    if (options.length === 0) {
+      ui.notify(tr.providersEmpty, "warning");
+      return;
+    }
+    const name = await ui.select(tr.providersTitle, options, tr.providersSubtitle);
+    if (!name) return;
+    await runProviderActions(ui, ctx, name, pi);
+  }
+}
+
+/** Kept for compatibility: the old flat manage menu is now the provider hub. */
+export async function runManageMenu(ui: PimUi, ctx: RegistryCtx): Promise<void> {
+  await runProvidersMenu(ui, ctx);
 }

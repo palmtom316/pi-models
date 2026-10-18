@@ -34,9 +34,9 @@ export default function piModels(pi: ExtensionAPI) {
     await applyVisibility(ctx.modelRegistry);
   });
 
-  const handler = async (_args: string, ctx: Parameters<typeof runWizard>[0]) => {
+  const handler = (start: "menu" | "new") => async (_args: string, ctx: Parameters<typeof runWizard>[0]) => {
     try {
-      await runWizard(ctx, pi);
+      await runWizard(ctx, pi, start);
     } catch (error) {
       const raw = error instanceof Error ? error.message : String(error);
       const message = raw
@@ -49,14 +49,14 @@ export default function piModels(pi: ExtensionAPI) {
 
   pi.registerCommand("pim", {
     description: "Add or manage models.json providers (70% overlay)",
-    handler,
+    handler: handler("menu"),
   });
   pi.registerCommand("pim-models", {
     description: "Alias for /pim",
-    handler,
+    handler: handler("menu"),
   });
   pi.registerCommand("add-provider", {
-    description: "Alias for /pim",
-    handler,
+    description: "Jump straight to creating a new provider",
+    handler: handler("new"),
   });
 }

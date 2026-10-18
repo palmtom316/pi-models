@@ -1,4 +1,5 @@
 import { Key, matchesKey } from "@earendil-works/pi-tui";
+import { t } from "../i18n.ts";
 
 export interface MultiSelectItem {
   value: string;
@@ -21,6 +22,8 @@ export interface MultiSelectSession {
   bulkIndex: number;
   cursor: number;
   offset: number;
+  /** Transient warning shown above the list (e.g. "nothing selected"). */
+  notice?: string;
 }
 
 export function createMultiSelectSession(items: MultiSelectItem[]): MultiSelectSession {
@@ -81,27 +84,36 @@ export type MultiSelectOutcome = "pending" | "confirm" | "cancel";
 
 export function handleMultiSelectInput(session: MultiSelectSession, data: string): MultiSelectOutcome {
   const list = visibleItems(session);
+  const notice = (message: string): MultiSelectOutcome => {
+    session.notice = message;
+    return "pending";
+  };
 
-  if (matchesKey(data, Key.escape)) {
-    if (session.filter) {
-      session.filter = "";
-      resetListCursor(session);
+  // Esc always cancels: the filter is cleared with backspace / ^U instead, so
+  // leaving the dialog never takes two presses.
+  if (matchesKey(data, Key.escape)) return "cancel";
+  if (matchesKey(data, Key.enter)) {
+    if (session.focus === "bulk") {
+      applyBulk(session, BULK_ACTIONS[session.bulkIndex]!);
       return "pending";
     }
-    return "cancel";
+    if (session.checked.size === 0) return notice(t().multiSelectNothing);
+    return "confirm";
   }
-  if (matchesKey(data, Key.enter)) return "confirm";
 
   if (matchesKey(data, Key.ctrl("a"))) {
     applyBulk(session, "selectAll");
+    session.notice = undefined;
     return "pending";
   }
   if (matchesKey(data, Key.ctrl("r"))) {
     applyBulk(session, "invert");
+    session.notice = undefined;
     return "pending";
   }
   if (matchesKey(data, Key.ctrl("u"))) {
     applyBulk(session, "deselectAll");
+    session.notice = undefined;
     return "pending";
   }
   if (matchesKey(data, Key.ctrl("h"))) {
@@ -138,6 +150,26 @@ export function handleMultiSelectInput(session: MultiSelectSession, data: string
     }
     return "pending";
   }
+  if (matchesKey(data, Key.pageUp)) {
+    session.focus = "list";
+    session.cursor = Math.max(0, session.cursor - 10);
+    return "pending";
+  }
+  if (matchesKey(data, Key.pageDown)) {
+    session.focus = "list";
+    session.cursor = Math.min(Math.max(0, list.length - 1), session.cursor + 10);
+    return "pending";
+  }
+  if (matchesKey(data, Key.home)) {
+    session.focus = "list";
+    session.cursor = 0;
+    return "pending";
+  }
+  if (matchesKey(data, Key.end)) {
+    session.focus = "list";
+    session.cursor = Math.max(0, list.length - 1);
+    return "pending";
+  }
 
   if (matchesKey(data, Key.space)) {
     if (session.focus === "bulk") {
@@ -148,6 +180,7 @@ export function handleMultiSelectInput(session: MultiSelectSession, data: string
     if (item) {
       if (session.checked.has(item.value)) session.checked.delete(item.value);
       else session.checked.add(item.value);
+      session.notice = undefined;
     }
     return "pending";
   }
@@ -157,7 +190,9 @@ export function handleMultiSelectInput(session: MultiSelectSession, data: string
     resetListCursor(session);
     return "pending";
   }
-  if (data.length === 1 && data.charCodeAt(0) >= 32 && data !== " ") {
+  // Typing filters the list only while the rows have focus, so a stray key
+  // while the action bar is focused cannot blank out the list.
+  if (session.focus === "list" && data.length === 1 && data.charCodeAt(0) >= 32 && data !== " ") {
     session.filter += data;
     resetListCursor(session);
   }

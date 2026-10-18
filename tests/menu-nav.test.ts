@@ -4,10 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 import { setLang, t } from "../src/i18n.ts";
-import { runManageMenu, wizardHideProvider } from "../src/manage.ts";
-import type { PimUi } from "../src/ui/pim-ui.ts";
+import { runManageMenu, runProvidersMenu, wizardHideProvider } from "../src/manage.ts";
+import type { PimOption, PimUi } from "../src/ui/pim-ui.ts";
 import { FOOTER_SELECT_EXIT } from "../src/ui/dialogs.ts";
-import { mainMenuOptions, runMainMenu, wizardNew, wizardSwitchDefault, type CmdCtx } from "../src/wizard.ts";
+import { mainMenuItems, mainMenuOptions, runMainMenu, wizardNew, wizardSwitchDefault, type CmdCtx } from "../src/wizard.ts";
 
 function emptyCtx(): CmdCtx {
   return {
@@ -33,21 +33,25 @@ async function withAgentDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
   }
 }
 
+/** Every fake select gets PimOption[]; this pulls the id back out. */
+function ids(options: Array<string | PimOption>): string[] {
+  return options.map((option) => (typeof option === "string" ? option : option.value));
+}
+
 describe("main menu navigation", () => {
-  it("orders browse → create → extend → manage, then settings / exit", () => {
+  it("orders daily work first, then maintenance, then exit", () => {
     setLang("en");
     assert.deepEqual(mainMenuOptions(), [
-      t().menuView,
+      t().menuProviders,
       t().menuSwitchDefault,
       t().menuNew,
       t().menuAdd,
-      t().menuManage,
-      t().menuRefresh,
-      t().menuLang("en"),
+      t().menuUsage,
+      t().menuSettings,
       t().menuExit,
     ]);
     setLang("zh");
-    assert.equal(mainMenuOptions()[0], t().menuView);
+    assert.equal(mainMenuOptions()[0], t().menuProviders);
     assert.equal(mainMenuOptions().at(-1), t().menuExit);
     setLang("en");
   });
@@ -58,52 +62,55 @@ describe("main menu navigation", () => {
       const titles: string[] = [];
       const footers: Array<string | undefined> = [];
       const ui = {
-        select: async (title: string, _options: string[], _subtitle?: string, footer?: string) => {
+        select: async (title: string, _options: unknown, _subtitle?: unknown, footer?: string) => {
           titles.push(title);
           footers.push(footer);
           if (title === t().menuTitle) {
-            return titles.filter((x) => x === t().menuTitle).length === 1 ? t().menuNew : undefined;
+            return titles.filter((x) => x === t().menuTitle).length === 1 ? "new" : undefined;
           }
           return undefined;
         },
         input: async () => undefined,
         confirm: async () => undefined,
+        secret: async () => undefined,
         notify: () => undefined,
       } as unknown as PimUi;
       await runMainMenu(emptyCtx(), ui, { setModel: async () => false });
       assert.deepEqual(titles, [t().menuTitle, t().menuTitle]);
-      assert.equal(footers[0], FOOTER_SELECT_EXIT);
+      assert.equal(footers[0], FOOTER_SELECT_EXIT());
     });
   });
 
-  it("Manage Back returns to the main menu", async () => {
+  it("Providers hub Esc returns to the main menu", async () => {
     setLang("en");
-    await withAgentDir(async () => {
+    await withAgentDir(async (dir) => {
+      await writeFile(join(dir, "models.json"), JSON.stringify({
+        providers: { QQ: { apiKey: "sk", models: [{ id: "m", api: "openai-completions", baseUrl: "https://x/v1" }] } },
+      }));
       const titles: string[] = [];
       const ui = {
         select: async (title: string) => {
           titles.push(title);
           if (title === t().menuTitle) {
-            return titles.filter((x) => x === t().menuTitle).length === 1 ? t().menuManage : undefined;
+            return titles.filter((x) => x === t().menuTitle).length === 1 ? "providers" : undefined;
           }
-          if (title === t().manageTitle) return t().manageBack;
           return undefined;
         },
         notify: () => undefined,
       } as unknown as PimUi;
       await runMainMenu(emptyCtx(), ui, { setModel: async () => false });
-      assert.deepEqual(titles, [t().menuTitle, t().manageTitle, t().menuTitle]);
+      assert.deepEqual(titles, [t().menuTitle, t().providersTitle, t().menuTitle]);
     });
   });
 
-  it("Exit label closes the overlay without dispatching a submenu", async () => {
+  it("Exit closes the overlay without dispatching a submenu", async () => {
     setLang("en");
     await withAgentDir(async () => {
       let selects = 0;
       const ui = {
         select: async () => {
           selects++;
-          return t().menuExit;
+          return "exit";
         },
         input: async () => {
           throw new Error("should not open a submenu");
@@ -113,6 +120,46 @@ describe("main menu navigation", () => {
       await runMainMenu(emptyCtx(), ui, { setModel: async () => false });
       assert.equal(selects, 1);
     });
+  });
+
+  it("Settings opens the language / cache submenu, not a blind toggle", async () => {
+    setLang("en");
+    await withAgentDir(async () => {
+      const titles: string[] = [];
+      const ui = {
+        select: async (title: string) => {
+          titles.push(title);
+          if (title === t().menuTitle) {
+            return titles.filter((x) => x === t().menuTitle).length === 1 ? "settings" : undefined;
+          }
+          if (title === t().settingsTitle) return "back";
+          return undefined;
+        },
+        notify: () => undefined,
+      } as unknown as PimUi;
+      await runMainMenu(emptyCtx(), ui, { setModel: async () => false });
+      assert.deepEqual(titles, [t().menuTitle, t().settingsTitle, t().menuTitle]);
+    });
+  });
+});
+
+describe("main menu rows", () => {
+  it("carries a stable id and a one-line hint per row", () => {
+    for (const lang of ["en", "zh"] as const) {
+      setLang(lang);
+      const items = mainMenuItems();
+      assert.deepEqual(items.map((item) => item.value), [
+        "providers",
+        "switchDefault",
+        "new",
+        "add",
+        "usage",
+        "settings",
+        "exit",
+      ]);
+      for (const item of items) assert.ok(item.description, `missing hint for ${item.value}`);
+    }
+    setLang("en");
   });
 });
 
@@ -285,9 +332,9 @@ describe("switch default model", () => {
         },
       };
       const ui = {
-        select: async (title: string, options: string[]) => {
+        select: async (title: string, options: Array<string | PimOption>) => {
           if (title === t().selectProvider) return "QQ";
-          if (title === t().selectDefaultModel) return options.find((o) => o.startsWith("glm")) ?? "glm";
+          if (title === t().selectDefaultModel) return ids(options).find((id) => id.startsWith("glm")) ?? "glm";
           return undefined;
         },
         confirm: async () => true,
@@ -351,10 +398,51 @@ describe("switch default model", () => {
       assert.equal(settings.defaultModel, "m");
     });
   });
+
+  it("pre-selects the current model and marks it in the row description", async () => {
+    setLang("en");
+    await withAgentDir(async (dir) => {
+      await writeFile(join(dir, "models.json"), JSON.stringify({
+        providers: {
+          QQ: {
+            models: [
+              { id: "old", api: "openai-completions", baseUrl: "https://x/v1" },
+              { id: "glm", api: "openai-completions", baseUrl: "https://x/v1" },
+            ],
+          },
+        },
+      }));
+      await writeFile(join(dir, "settings.json"), JSON.stringify({ defaultProvider: "QQ", defaultModel: "glm" }));
+      let seenInitial: string | undefined;
+      let marked: string | undefined;
+      let visits = 0;
+      const ui = {
+        select: async (
+          title: string,
+          options: Array<string | PimOption>,
+          _subtitle?: unknown,
+          _footer?: unknown,
+          opts?: { initialValue?: string },
+        ) => {
+          if (title === t().selectProvider) return visits++ === 0 ? "QQ" : undefined;
+          if (title === t().selectDefaultModel) {
+            seenInitial = opts?.initialValue;
+            marked = (options as PimOption[]).find((option) => option.value === "glm")?.description;
+            return undefined;
+          }
+          return undefined;
+        },
+        notify: () => undefined,
+      } as unknown as PimUi;
+      await wizardSwitchDefault(emptyCtx(), ui, { setModel: async () => false });
+      assert.equal(seenInitial, "glm");
+      assert.match(marked ?? "", /\*/);
+    });
+  });
 });
 
-describe("manage menu loop", () => {
-  it("Esc from a manage action returns to the manage menu", async () => {
+describe("provider hub", () => {
+  it("Esc from a provider action returns to the provider list", async () => {
     setLang("en");
     await withAgentDir(async (dir) => {
       await writeFile(join(dir, "models.json"), JSON.stringify({
@@ -366,17 +454,64 @@ describe("manage menu loop", () => {
       const ui = {
         select: async (title: string) => {
           titles.push(title);
-          if (title === t().manageTitle) {
-            return titles.filter((x) => x === t().manageTitle).length === 1
-              ? t().manageBackup
-              : t().manageBack;
+          if (title === t().providersTitle) {
+            return titles.filter((x) => x === t().providersTitle).length === 1 ? "QQ" : undefined;
+          }
+          return undefined;
+        },
+        notify: () => undefined,
+      } as unknown as PimUi;
+      await runProvidersMenu(ui, emptyCtx());
+      assert.deepEqual(titles, [t().providersTitle, "QQ", t().providersTitle]);
+    });
+  });
+
+  it("marks the delete action as dangerous and keeps it last", async () => {
+    setLang("en");
+    await withAgentDir(async (dir) => {
+      await writeFile(join(dir, "models.json"), JSON.stringify({
+        providers: {
+          QQ: { apiKey: "sk", models: [{ id: "m", api: "openai-completions", baseUrl: "https://x/v1" }] },
+        },
+      }));
+      let rows: PimOption[] = [];
+      let visits = 0;
+      const ui = {
+        select: async (title: string, options: Array<string | PimOption>) => {
+          if (title === t().providersTitle) return visits++ === 0 ? "QQ" : undefined;
+          rows = options as PimOption[];
+          return undefined;
+        },
+        notify: () => undefined,
+      } as unknown as PimUi;
+      await runProvidersMenu(ui, emptyCtx());
+      const danger = rows.filter((row) => row.danger);
+      assert.deepEqual(danger.map((row) => row.value), ["deleteProvider"]);
+      assert.equal(rows.at(-1)?.value, "deleteProvider");
+    });
+  });
+
+  it("legacy runManageMenu is the provider hub", async () => {
+    setLang("en");
+    await withAgentDir(async (dir) => {
+      await writeFile(join(dir, "models.json"), JSON.stringify({
+        providers: {
+          QQ: { apiKey: "sk", models: [{ id: "m", api: "openai-completions", baseUrl: "https://x/v1" }] },
+        },
+      }));
+      const titles: string[] = [];
+      const ui = {
+        select: async (title: string) => {
+          titles.push(title);
+          if (title === t().providersTitle) {
+            return titles.filter((x) => x === t().providersTitle).length === 1 ? "QQ" : undefined;
           }
           return undefined;
         },
         notify: () => undefined,
       } as unknown as PimUi;
       await runManageMenu(ui, emptyCtx());
-      assert.deepEqual(titles, [t().manageTitle, t().selectProvider, t().manageTitle]);
+      assert.deepEqual(titles, [t().providersTitle, "QQ", t().providersTitle]);
     });
   });
 
@@ -389,14 +524,12 @@ describe("manage menu loop", () => {
         },
       }));
       const registered: string[] = [];
-      const titles: string[] = [];
+      let visits = 0;
+      let actions = 0;
       const ui = {
         select: async (title: string) => {
-          if (title === t().manageTitle) {
-            return titles.length === 0 ? t().manageHideProvider : undefined;
-          }
-          titles.push(title);
-          if (title === t().hideProviderTitle) return "QQ";
+          if (title === t().providersTitle) return visits++ === 0 ? "QQ" : undefined;
+          if (title === "QQ") return actions++ === 0 ? "hide" : undefined;
           return undefined;
         },
         confirm: async () => true,

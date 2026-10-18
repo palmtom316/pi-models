@@ -1,21 +1,30 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { setLang, t } from "../src/i18n.ts";
+import { mainMenuItems, mainMenuOptions } from "../src/wizard.ts";
 
 describe("menu dispatch robustness", () => {
-  it("menuLang labels differ between languages so dispatch by label is unambiguous", () => {
+  it("dispatches on stable ids, never on localized labels", () => {
+    for (const lang of ["en", "zh"] as const) {
+      setLang(lang);
+      const items = mainMenuItems();
+      assert.deepEqual(
+        items.map((item) => item.value),
+        ["providers", "switchDefault", "new", "add", "usage", "settings", "exit"],
+      );
+      // Labels are free to repeat a word across languages; ids never change.
+      assert.deepEqual(mainMenuOptions(), items.map((item) => item.label));
+    }
     setLang("en");
-    const en = t().menuLang("en");
-    setLang("zh");
-    const zh = t().menuLang("zh");
-    assert.notEqual(en, zh);
-    // and neither collides with other menu labels
-    setLang("en");
-    const enLabels = [t().menuNew, t().menuAdd, t().menuManage, t().menuView, t().menuSwitchDefault, t().menuRefresh, t().menuExit];
-    setLang("zh");
-    const zhLabels = [t().menuNew, t().menuAdd, t().menuManage, t().menuView, t().menuSwitchDefault, t().menuRefresh, t().menuExit];
-    assert.ok(!enLabels.includes(en));
-    assert.ok(!zhLabels.includes(zh));
+  });
+
+  it("every main-menu row carries a one-line hint", () => {
+    for (const lang of ["en", "zh"] as const) {
+      setLang(lang);
+      for (const item of mainMenuItems()) {
+        assert.ok(item.description && item.description.length > 0, `missing description for ${item.value}`);
+      }
+    }
     setLang("en");
   });
 

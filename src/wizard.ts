@@ -5,25 +5,24 @@ import { loadOfficialCatalog } from "./models-dev.ts";
 import {
   applyDrafts,
   clashesBuiltin,
-  deleteModels,
   listExistingProviders,
   mutateModelsFile,
   providerNameOk,
   readModelsFile,
   rollbackModelsFile,
-  writeProviderBackup,
   type MergeMode,
 } from "./models-json.ts";
-import { runManageMenu, persistFile } from "./manage.ts";
+import { runProvidersMenu, providerOptions } from "./manage.ts";
+import { wizardTokenUsage } from "./usage-wizard.ts";
 import { enrichUnknownDrafts, resolveDrafts } from "./resolve.ts";
 import { canonicalizeUrl } from "./url.ts";
 import { writeSidecar } from "./sidecar.ts";
 import { readDefaultModelRef, readSettingsFile, writeDefaultModel } from "./settings.ts";
 import { PI_APIS, type ModelDraft, type ModelsFile, type PiApi } from "./types.ts";
-import { createPimUi, type PimUi } from "./ui/pim-ui.ts";
+import { createPimUi, type PimOption, type PimUi } from "./ui/pim-ui.ts";
 import { FOOTER_SELECT_EXIT } from "./ui/dialogs.ts";
 import { maybeEditDrafts } from "./ui/edit-caps.ts";
-import { loadLang, saveLang, t, otherLang, getLang } from "./i18n.ts";
+import { langLabel, loadLang, getLang, saveLang, t } from "./i18n.ts";
 
 /** The slice of the Pi session API the wizard uses to switch the active model. */
 export type ModelSwitcher = {
@@ -45,6 +44,8 @@ export type CmdCtx = {
     registerProvider?: (provider: import("@earendil-works/pi-ai").Provider) => void;
     unregisterProvider?: (id: string) => void;
   };
+  /** Present in the real extension context; used to locate the live session dir. */
+  sessionManager?: { getSessionDir?: () => string };
 };
 
 function failNonTui(ctx: CmdCtx): boolean {
@@ -55,9 +56,15 @@ function failNonTui(ctx: CmdCtx): boolean {
   return false;
 }
 
-async function pickApi(ui: PimUi): Promise<PiApi | undefined> {
+const NEW_STEPS = 5;
+
+async function pickApi(ui: PimUi, subtitle?: string): Promise<PiApi | undefined> {
   const tr = t();
-  const choice = await ui.select(tr.selectApiType, [...PI_APIS]);
+  const choice = await ui.select(
+    tr.selectApiType,
+    PI_APIS.map((api) => ({ value: api, label: api, description: tr.apiTypeDescription(api) })),
+    subtitle,
+  );
   return (choice as PiApi | undefined) ?? undefined;
 }
 
@@ -88,7 +95,9 @@ async function collectGroups(
     const keyTitle = groupIndex === 1
       ? tr.secretApiKey
       : `${tr.groupTitle(groupIndex)} — ${tr.secretApiKey}`;
-    const apiKey = await ui.secret(keyTitle);
+    const apiKey = await ui.secret(keyTitle, {
+      subtitle: `${t().stepLabel(5, NEW_STEPS, t().stepApiKey)} · ${baseName} · ${api}`,
+    });
     if (!apiKey) {
       if (groups.length === 0) return undefined;
       break;
@@ -232,15 +241,15 @@ export async function draftsForApi(
         continue;
       }
       const choice = await ui.select(tr.idExistsTitle(draft.id), [
-        tr.idExistsKeep,
-        tr.idExistsReplace,
-        tr.idExistsSkip,
+        { value: "keep", label: tr.idExistsKeep },
+        { value: "replace", label: tr.idExistsReplace },
+        { value: "skip", label: tr.idExistsSkip },
       ]);
       if (!choice) {
         back = true;
         break;
       }
-      if (choice === tr.idExistsReplace) out.push({ ...draft, replaceExisting: true });
+      if (choice === "replace") out.push({ ...draft, replaceExisting: true });
     }
     if (back) continue;
 
@@ -271,10 +280,19 @@ export async function persist(
     ui.notify(tr.errDraftMissingEndpoint, "error");
     return undefined;
   }
-  const summary = drafts.length
-    ? drafts.map((d) => `${d.id}  ${d.api}`).slice(0, 12).join("\n")
-    : (replace ?? []).map((r) => `${r.api}  ${r.baseUrl}`).slice(0, 12).join("\n");
-  const ok = await ui.confirm(tr.confirmWriteTitle, `${tr.confirmWriteMsg(drafts.length, providerId)}\n${summary}`);
+  const LIMIT = 12;
+  const rows = drafts.length
+    ? drafts.map((d) => `${d.id}  ${d.api}  ${d.baseUrl ?? ""}`)
+    : (replace ?? []).map((r) => `${r.api}  ${r.baseUrl}`);
+  const summary = rows.slice(0, LIMIT).join("\n");
+  // Tell the user how many rows were hidden, and which mode will be written.
+  const more = rows.length > LIMIT ? `\n${tr.confirmWriteMore(rows.length - LIMIT)}` : "";
+  const header = [
+    tr.confirmWriteMsg(drafts.length, providerId),
+    tr.confirmWriteMode(mode === "replace-endpoint" ? tr.applyHowReplace : tr.applyHowMerge),
+    drafts[0]?.baseUrl ? `${tr.stepBaseUrl}: ${drafts[0].baseUrl}` : "",
+  ].filter(Boolean).join("\n");
+  const ok = await ui.confirm(tr.confirmWriteTitle, `${header}\n\n${summary}${more}`);
   if (ok !== true) return undefined;
 
   let merged!: ReturnType<typeof applyDrafts>;
@@ -290,6 +308,7 @@ export async function persist(
     const restore = await ui.confirm(
       tr.confirmRollback,
       backupPath ? tr.confirmRollbackRestore(backupPath) : tr.confirmRollbackRemove,
+      { danger: true },
     );
     if (restore === true) {
       await rollbackModelsFile(backupPath);
@@ -330,17 +349,18 @@ export async function wizardNew(ctx: CmdCtx, ui: PimUi, file: ModelsFile, pi: Mo
   let api: PiApi | undefined;
   let baseUrl: string | undefined;
   let userAgent: boolean | undefined;
+  const step = (n: number, what: string) => tr.stepLabel(n, NEW_STEPS, what);
 
   while (true) {
     if (!name) {
-      const typed = await ui.input(tr.inputProviderName, "ELY");
+      const typed = await ui.input(tr.inputProviderName, "ELY", { initial: "", subtitle: step(1, tr.stepName) });
       if (!typed) return;
       if (!providerNameOk(typed)) {
         ui.notify(tr.errNameFormat, "error");
         continue;
       }
       if (clashesBuiltin(typed)) {
-        const go = await ui.confirm(tr.builtinName, tr.builtinNameConfirm(typed));
+        const go = await ui.confirm(tr.builtinName, tr.builtinNameConfirm(typed), { danger: true });
         if (go !== true) continue;
       }
       name = typed;
@@ -348,7 +368,7 @@ export async function wizardNew(ctx: CmdCtx, ui: PimUi, file: ModelsFile, pi: Mo
     }
 
     if (!api) {
-      api = await pickApi(ui);
+      api = await pickApi(ui, `${step(2, tr.stepApi)}${name ? ` · ${name}` : ""}`);
       if (!api) {
         name = undefined;
         continue;
@@ -357,7 +377,9 @@ export async function wizardNew(ctx: CmdCtx, ui: PimUi, file: ModelsFile, pi: Mo
     }
 
     if (!baseUrl) {
-      const raw = await ui.input(tr.inputBaseUrl, "https://example.com/v1");
+      const raw = await ui.input(tr.inputBaseUrl, "https://example.com/v1", {
+        subtitle: `${step(3, tr.stepBaseUrl)} · ${name} · ${api}`,
+      });
       if (!raw) {
         api = undefined;
         continue;
@@ -372,7 +394,10 @@ export async function wizardNew(ctx: CmdCtx, ui: PimUi, file: ModelsFile, pi: Mo
     }
 
     if (userAgent === undefined) {
-      const ua = await ui.confirm(tr.confirmUserAgent, tr.confirmUserAgentMsg);
+      const ua = await ui.confirm(
+        tr.confirmUserAgent,
+        `${step(4, tr.stepUserAgent)}\n${name} · ${api} · ${baseUrl}\n\n${tr.confirmUserAgentMsg}`,
+      );
       if (ua === undefined) {
         baseUrl = undefined;
         continue;
@@ -381,7 +406,7 @@ export async function wizardNew(ctx: CmdCtx, ui: PimUi, file: ModelsFile, pi: Mo
       continue;
     }
 
-    // Step 2: loop over groups — each group has its own apiKey + selected models.
+    // Step 5: loop over groups — each group has its own apiKey + selected models.
     // ESC on the first key returns to the User-Agent prompt.
     const existing = new Set<string>();
     const groups = await collectGroups(ui, name, api, baseUrl, userAgent, existing);
@@ -423,7 +448,17 @@ function upsertDraft(list: ModelDraft[], draft: ModelDraft): void {
   else list.push(draft);
 }
 
-async function wizardAddApi(ctx: CmdCtx, ui: PimUi, file: ModelsFile, pi: ModelSwitcher): Promise<void> {
+/**
+ * Add API / models. `providerName` skips the provider picker when the caller
+ * already knows which provider it is (the provider hub does).
+ */
+export async function wizardAddApi(
+  ctx: CmdCtx,
+  ui: PimUi,
+  file: ModelsFile,
+  pi: ModelSwitcher,
+  providerName?: string,
+): Promise<void> {
   const tr = t();
   const names = listExistingProviders(file);
   if (names.length === 0) {
@@ -432,8 +467,9 @@ async function wizardAddApi(ctx: CmdCtx, ui: PimUi, file: ModelsFile, pi: ModelS
   }
 
   while (true) {
-    const name = await ui.select(tr.selectProvider, names);
+    const name = providerName ?? await ui.select(tr.selectProvider, await providerOptions(file));
     if (!name) return;
+    providerName = undefined;
     const provider = file.providers[name];
     const storedKey = catalogApiKey(provider);
     let catalogKey = storedKey;
@@ -467,14 +503,31 @@ async function wizardAddApi(ctx: CmdCtx, ui: PimUi, file: ModelsFile, pi: ModelS
       }
       if (cancelled) continue;
 
-      const modeChoice = await ui.select(tr.applyHowTitle, [tr.applyHowMerge, tr.applyHowReplace, tr.applyHowCancel]);
-      if (!modeChoice || modeChoice === tr.applyHowCancel) return;
-      const mode = modeChoice === tr.applyHowReplace ? "replace-endpoint" : "merge";
+      const modeChoice = await ui.select(tr.applyHowTitle, [
+        { value: "merge", label: tr.applyHowMerge, description: tr.applyHowMergeDesc },
+        { value: "replace", label: tr.applyHowReplace, description: tr.applyHowReplaceDesc },
+        { value: "cancel", label: tr.applyHowCancel, description: tr.applyHowCancelDesc },
+      ]);
+      if (!modeChoice || modeChoice === "cancel") {
+        // Cancelling here used to throw away the catalog selection and the
+        // typed key without a word; go back to picking a provider instead.
+        ui.notify(tr.applyHowDiscarded(all.length), "warning");
+        return;
+      }
+      const mode = modeChoice === "replace" ? "replace-endpoint" : "merge";
       const persistKey = provider?.apiKey ? undefined : catalogKey;
       await persist(ctx, ui, file, name, persistKey, all, mode, pi, specs.map((spec) => ({ api: spec.api, baseUrl: spec.baseUrl })));
       return;
     }
+    if (providerName) return;
   }
+}
+
+/** Entry point for the provider hub: add endpoints/models to one provider. */
+export async function wizardAddApiFor(ctx: CmdCtx, ui: PimUi, providerName: string): Promise<void> {
+  await wizardAddApi(ctx, ui, await readModelsFile(), (ctx as unknown as { pi?: { setModel: Function } }).pi ?? {
+    setModel: async () => false,
+  }, providerName);
 }
 
 async function wizardRefreshCache(ui: PimUi): Promise<void> {
@@ -483,97 +536,52 @@ async function wizardRefreshCache(ui: PimUi): Promise<void> {
     tr.refreshingCache,
     async (signal) => {
       const remote = await loadOfficialCatalog({ force: true, signal });
-      return remote.warning ?? tr.refreshingCacheResult(Object.keys(remote.catalog).length, remote.fetchedAt ?? "unknown time");
+      return remote.warning ?? tr.refreshingCacheResult(Object.keys(remote.catalog).length, remote.fetchedAt ?? tr.unknownTime);
     },
     tr.cacheCancelled,
   );
   ui.notify(String(result), "info");
 }
 
-async function wizardViewProviders(ui: PimUi, ctx: CmdCtx): Promise<void> {
-  const tr = t();
-  const file = await readModelsFile();
-  let names = listExistingProviders(file);
-  if (names.length === 0) {
-    ui.notify(tr.viewNoProviders, "warning");
-    return;
-  }
-
-  while (true) {
-    const choice = await ui.select(tr.viewTitle, [...names, tr.viewBack]);
-    if (!choice || choice === tr.viewBack) return;
-
-    const providerName = choice;
-    const provider = file.providers[providerName];
-    const models = provider?.models ?? [];
-
-    if (models.length === 0) {
-      ui.notify(tr.viewNoModels(providerName), "warning");
-      continue;
-    }
-
-    // Show models for this provider, allow deletion
-    const modelOptions = models.map((m) => `${m.id}  ${m.api ?? provider?.api ?? "?"}  ${m.contextWindow ?? "?"}/${m.maxTokens ?? "?"}`);
-    modelOptions.push(tr.viewDeleteModels);
-    modelOptions.push(tr.viewBack);
-
-    const modelChoice = await ui.select(`${providerName}`, modelOptions);
-    if (!modelChoice || modelChoice === tr.viewBack) continue;
-
-    if (modelChoice === tr.viewDeleteModels) {
-      // Delegate to the manage delete-models flow but pre-select this provider
-      await wizardDeleteModelsForProvider(ui, ctx, file, providerName);
-      // Re-read in place so the loop reflects disk state
-      Object.assign(file, await readModelsFile());
-      names = listExistingProviders(file);
-      if (names.length === 0) return;
-    }
-  }
-}
-
-async function wizardDeleteModelsForProvider(ui: PimUi, ctx: CmdCtx, file: ModelsFile, name: string): Promise<void> {
-  const tr = t();
-  const provider = file.providers[name];
-  const models = provider?.models ?? [];
-  if (models.length === 0) {
-    ui.notify(tr.viewNoModels(name), "warning");
-    return;
-  }
-  const selected = await ui.multiSelect(
-    tr.deleteModelsTitle(name),
-    models.map((m) => ({
-      value: m.id,
-      label: m.id,
-      description: `${m.api ?? provider?.api ?? "?"}  ${m.contextWindow ?? "?"}/${m.maxTokens ?? "?"}`,
-    })),
-  );
-  if (!selected || selected.length === 0) return;
-  const ok = await ui.confirm(tr.confirmDeleteModels, tr.confirmDeleteModelsMsg(selected.length, name, selected));
-  if (ok !== true) return;
-
-  await writeProviderBackup(file, name);
-  await persistFile(ui, ctx, (current) => deleteModels(current, name, selected), tr.deletedModels(selected.length, name));
-}
-
+/** Language submenu: explicit rows with a marker, instead of a blind toggle. */
 async function wizardSwitchLang(ui: PimUi): Promise<void> {
-  const next = otherLang(getLang());
-  await saveLang(next);
+  const tr = t();
+  const current = getLang();
+  const choice = await ui.select(
+    tr.languageTitle,
+    [
+      { value: "en", label: langLabel("en"), description: current === "en" ? tr.languageCurrent : "" },
+      { value: "zh", label: langLabel("zh"), description: current === "zh" ? tr.languageCurrent : "" },
+    ],
+    undefined,
+    undefined,
+    { initialValue: current, filterable: false },
+  );
+  if (!choice || choice === current) return;
+  await saveLang(choice === "zh" ? "zh" : "en");
+  ui.notify(langLabel(choice === "zh" ? "zh" : "en"), "info");
 }
 
-function modelChoiceValue(provider: string, id: string): string {
-  return `${provider}\0${id}`;
+async function runSettingsMenu(ui: PimUi): Promise<void> {
+  while (true) {
+    const tr = t();
+    const action = await ui.select(tr.settingsTitle, [
+      { value: "lang", label: tr.settingsLanguage, description: tr.settingsLanguageDesc(langLabel(getLang())) },
+      { value: "cache", label: tr.settingsCache, description: tr.settingsCacheDesc },
+      { value: "back", label: tr.settingsBack },
+    ]);
+    if (!action || action === "back") return;
+    if (action === "lang") await wizardSwitchLang(ui);
+    else if (action === "cache") await wizardRefreshCache(ui);
+  }
 }
 
-function parseModelChoice(value: string): { provider: string; id: string } | undefined {
-  const sep = value.indexOf("\0");
-  if (sep <= 0 || sep === value.length - 1) return undefined;
-  return { provider: value.slice(0, sep), id: value.slice(sep + 1) };
-}
-
+/** Default-model picker, optionally scoped to one provider (provider hub). */
 export async function wizardSwitchDefault(
   ctx: CmdCtx,
   ui: PimUi,
   pi: ModelSwitcher,
+  providerName?: string,
 ): Promise<void> {
   const tr = t();
   const file = await readModelsFile();
@@ -593,8 +601,9 @@ export async function wizardSwitchDefault(
     : tr.defaultModelUnset;
 
   while (true) {
-    const name = await ui.select(tr.selectProvider, [...names, tr.viewBack], subtitle);
-    if (!name || name === tr.viewBack) return;
+    const name = providerName ?? await ui.select(tr.selectProvider, await providerOptions(file), subtitle);
+    if (!name) return;
+    providerName = undefined;
 
     const provider = file.providers[name];
     const models = provider?.models ?? [];
@@ -603,104 +612,146 @@ export async function wizardSwitchDefault(
       continue;
     }
 
-    const options = models.map((m) => {
-      const mark = current?.provider === name && current.model === m.id ? " *" : "";
+    const options: PimOption[] = models.map((m) => {
+      const isCurrent = current?.provider === name && current.model === m.id;
       return {
-        value: modelChoiceValue(name, m.id),
-        label: `${m.id}${mark}`,
+        value: m.id,
+        label: m.id,
+        description: isCurrent
+          ? `* ${tr.languageCurrent}`
+          : [m.name && m.name !== m.id ? m.name : "", `${m.contextWindow ?? "?"}/${m.maxTokens ?? "?"}`]
+            .filter(Boolean).join("  "),
       };
     });
-    const labels = [...options.map((o) => o.label), tr.viewBack];
-    const choice = await ui.select(tr.selectDefaultModel, labels, subtitle);
-    if (!choice || choice === tr.viewBack) continue;
-
-    const picked = options.find((o) => o.label === choice);
-    const parsed = picked ? parseModelChoice(picked.value) : undefined;
-    if (!parsed) continue;
-    if (current?.provider === parsed.provider && current.model === parsed.id) {
-      ui.notify(tr.switchedDefault(parsed.provider, parsed.id), "info");
+    const choice = await ui.select(tr.selectDefaultModel, options, subtitle, undefined, {
+      initialValue: current?.provider === name ? current.model : undefined,
+    });
+    if (!choice) continue;
+    if (current?.provider === name && current.model === choice) {
+      ui.notify(tr.switchedDefault(name, choice), "info");
       return;
     }
 
-    const ok = await ui.confirm(
-      tr.confirmSetDefault,
-      tr.confirmSetDefaultMsg(parsed.provider, parsed.id),
-    );
+    const ok = await ui.confirm(tr.confirmSetDefault, tr.confirmSetDefaultMsg(name, choice));
     if (ok !== true) continue;
 
     try {
-      await writeDefaultModel(parsed.provider, parsed.id);
+      await writeDefaultModel(name, choice);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       ui.notify(`${tr.setDefaultFailed}\n${message}`, "error");
       return;
     }
-    ui.notify(tr.switchedDefault(parsed.provider, parsed.id), "info");
+    ui.notify(tr.switchedDefault(name, choice), "info");
 
-    const model = ctx.modelRegistry.find(parsed.provider, parsed.id);
+    const model = ctx.modelRegistry.find(name, choice);
     const okSwitch = model ? await pi.setModel(model) : false;
     if (!okSwitch) ui.notify(tr.setModelFailed, "warning");
     return;
   }
 }
 
+/** Provider hub entry point: set the default model within one provider. */
+export async function wizardSetDefaultForProvider(
+  ctx: CmdCtx,
+  ui: PimUi,
+  providerName: string,
+): Promise<void> {
+  await wizardSwitchDefault(ctx, ui, ctx as unknown as { setModel: (model: unknown) => Promise<boolean> }, providerName);
+}
+
 export function mainMenuOptions(): string[] {
   const tr = t();
   return [
-    tr.menuView,
+    tr.menuProviders,
     tr.menuSwitchDefault,
     tr.menuNew,
     tr.menuAdd,
-    tr.menuManage,
-    tr.menuRefresh,
-    tr.menuLang(getLang()),
+    tr.menuUsage,
+    tr.menuSettings,
     tr.menuExit,
   ];
 }
 
+/** Same rows as `mainMenuOptions()`, with the one-line hint shown next to each. */
+export function mainMenuItems(): PimOption[] {
+  const tr = t();
+  return [
+    { value: "providers", label: tr.menuProviders, description: tr.menuProvidersDesc },
+    { value: "switchDefault", label: tr.menuSwitchDefault, description: tr.menuSwitchDefaultDesc },
+    { value: "new", label: tr.menuNew, description: tr.menuNewDesc },
+    { value: "add", label: tr.menuAdd, description: tr.menuAddDesc },
+    { value: "usage", label: tr.menuUsage, description: tr.menuUsageDesc },
+    { value: "settings", label: tr.menuSettings, description: tr.menuSettingsDesc },
+    { value: "exit", label: tr.menuExit, description: tr.menuExitDesc },
+  ];
+}
+
+/** Status line above the main menu: how much is configured right now. */
+export async function mainMenuStatus(): Promise<string> {
+  const tr = t();
+  try {
+    const file = await readModelsFile();
+    const providers = listExistingProviders(file);
+    const models = providers.reduce((sum, name) => sum + (file.providers[name]?.models?.length ?? 0), 0);
+    const current = readDefaultModelRef(await readSettingsFile());
+    return tr.menuStatus(providers.length, models, current ? `${current.provider}/${current.model}` : undefined);
+  } catch {
+    return tr.menuStatus(0, 0, undefined);
+  }
+}
+
 export async function runMainMenu(ctx: CmdCtx, ui: PimUi, pi: ModelSwitcher): Promise<void> {
   while (true) {
-    const tr = t();
-    // Snapshot dispatch labels each loop — menuLang depends on the current
-    // language, so compare against the captured strings, not re-evaluated calls.
-    const langLabel = tr.menuLang(getLang());
-    const exitLabel = tr.menuExit;
-    const action = await ui.select(tr.menuTitle, mainMenuOptions(), undefined, FOOTER_SELECT_EXIT);
-    if (!action || action === exitLabel) return;
-    if (action === tr.menuView) {
-      await wizardViewProviders(ui, ctx);
+    const subtitle = await mainMenuStatus();
+    const action = await ui.select(
+      t().menuTitle,
+      mainMenuItems(),
+      subtitle,
+      FOOTER_SELECT_EXIT(),
+      { filterable: false },
+    );
+    if (!action || action === "exit") return;
+    if (action === "providers") {
+      await runProvidersMenu(ui, ctx, pi as { setModel: (model: unknown) => Promise<boolean> });
       continue;
     }
-    if (action === tr.menuSwitchDefault) {
-      await wizardSwitchDefault(ctx, ui, pi);
+    if (action === "switchDefault") {
+      await wizardSwitchDefault(ctx, ui, pi as { setModel: (model: unknown) => Promise<boolean> });
       continue;
     }
-    if (action === tr.menuNew) {
+    if (action === "new") {
       await wizardNew(ctx, ui, await readModelsFile(), pi);
       continue;
     }
-    if (action === tr.menuAdd) {
+    if (action === "add") {
       await wizardAddApi(ctx, ui, await readModelsFile(), pi);
       continue;
     }
-    if (action === tr.menuManage) {
-      await runManageMenu(ui, ctx);
+    if (action === "usage") {
+      await wizardTokenUsage(ui, ctx);
       continue;
     }
-    if (action === tr.menuRefresh) {
-      await wizardRefreshCache(ui);
-      continue;
-    }
-    if (action === langLabel) {
-      await wizardSwitchLang(ui);
+    if (action === "settings") {
+      await runSettingsMenu(ui);
     }
   }
 }
 
-export async function runWizard(ctx: CmdCtx, pi: ModelSwitcher): Promise<void> {
+export async function runWizard(
+  ctx: CmdCtx,
+  pi: ModelSwitcher,
+  start: "menu" | "new" = "menu",
+): Promise<void> {
   if (failNonTui(ctx)) return;
   await loadLang();
-  await runMainMenu(ctx, createPimUi(ctx), pi);
+  const ui = createPimUi(ctx);
+  // `/add-provider` jumps straight into creation; everything else opens the menu.
+  if (start === "new") {
+    await wizardNew(ctx, ui, await readModelsFile(), pi);
+    return;
+  }
+  await runMainMenu(ctx, ui, pi);
 }
 
 export type { WizardApi } from "./types.ts";

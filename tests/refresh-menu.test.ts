@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { describe, it } from "node:test";
 import { setLang, t } from "../src/i18n.ts";
 import { wizardRefreshModels, type RegistryCtx } from "../src/manage.ts";
-import type { PimUi } from "../src/ui/pim-ui.ts";
+import type { PimOption, PimUi } from "../src/ui/pim-ui.ts";
 
 async function withAgentDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
   const dir = await mkdtemp(join(tmpdir(), "pim-refresh-"));
@@ -17,6 +17,11 @@ async function withAgentDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
     if (prev === undefined) delete process.env.PI_CODING_AGENT_DIR;
     else process.env.PI_CODING_AGENT_DIR = prev;
   }
+}
+
+/** Menus are PimOption[] now; the id lives in `.value`. */
+function value(option: string | PimOption): string {
+  return typeof option === "string" ? option : option.value;
 }
 
 describe("refresh models menu", () => {
@@ -38,16 +43,16 @@ describe("refresh models menu", () => {
       }));
       const titles: string[] = [];
       const ui = {
-        select: async (title: string, options: string[]) => {
+        select: async (title: string, options: Array<string | PimOption>) => {
           titles.push(title);
-          if (title === t().selectProvider) return options[0];
+          if (title === t().selectProvider) return value(options[0]!);
           return undefined;
         },
         multiSelect: async (title: string, items: Array<{ value: string }>) => {
           titles.push(title);
           return items.map((item) => item.value);
         },
-        loader: async (_title: string, _work: unknown, _fallback: unknown) => ({
+        loader: async () => ({
           ok: true,
           items: [{ id: "keep" }, { id: "fresh" }],
         }),
@@ -86,10 +91,10 @@ describe("refresh models menu", () => {
       }));
       const addOptions: string[] = [];
       const ui = {
-        select: async (title: string, options: string[]) => {
-          if (title === t().selectProvider) return options[0];
+        select: async (title: string, options: Array<string | PimOption>) => {
+          if (title === t().selectProvider) return value(options[0]!);
           if (title === t().refreshEndpointTitle("QQ")) {
-            return options.find((label) => label.includes("openai-completions")) ?? options[0];
+            return value(options.find((option) => value(option).includes("openai-completions")) ?? options[0]!);
           }
           return undefined;
         },
@@ -111,6 +116,49 @@ describe("refresh models menu", () => {
       const shared = written.providers.QQ.models.filter((model: { id: string }) => model.id === "shared");
       assert.equal(shared.length, 1);
       assert.equal(shared[0].baseUrl, "https://a.example");
+    });
+  });
+
+  it("pre-checks nothing in the removal list so Enter never deletes", async () => {
+    setLang("en");
+    await withAgentDir(async (dir) => {
+      await writeFile(join(dir, "models.json"), JSON.stringify({
+        providers: {
+          QQ: {
+            api: "openai-completions",
+            baseUrl: "https://relay.example/v1",
+            apiKey: "sk-test",
+            models: [
+              { id: "gone", name: "gone", api: "openai-completions", baseUrl: "https://relay.example/v1", reasoning: false, input: ["text"], contextWindow: 8, maxTokens: 8 },
+            ],
+          },
+        },
+      }));
+      const checkedFlags: boolean[] = [];
+      const ui = {
+        select: async (title: string, options: Array<string | PimOption>) => {
+          if (title === t().selectProvider) return value(options[0]!);
+          return undefined;
+        },
+        multiSelect: async (title: string, items: Array<{ value: string; checked?: boolean }>) => {
+          if (title === t().refreshRemovedTitle("QQ")) {
+            for (const item of items) checkedFlags.push(item.checked === true);
+            return [];
+          }
+          return [];
+        },
+        loader: async () => ({ ok: true, items: [{ id: "other" }] }),
+        confirm: async () => true,
+        secret: async () => "sk",
+        notify: () => undefined,
+      } as unknown as PimUi;
+      const ctx: RegistryCtx = {
+        modelRegistry: { refresh: async () => undefined, getError: () => undefined },
+      };
+      await wizardRefreshModels(ui, ctx, JSON.parse(await readFile(join(dir, "models.json"), "utf8")));
+      assert.deepEqual(checkedFlags, [false]);
+      const written = JSON.parse(await readFile(join(dir, "models.json"), "utf8"));
+      assert.deepEqual(written.providers.QQ.models.map((model: { id: string }) => model.id), ["gone"]);
     });
   });
 });

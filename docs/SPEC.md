@@ -194,15 +194,24 @@ Provider 名：`^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$`。撞内置 id（`openai`、`a
 
 ```text
 /pim-models
-  1. 选动作（完成后回到本层；Esc 逐层返回，主菜单 Esc / 退出才关 overlay）
-       查看已有 provider 及模型
-       切换默认模型（写入 settings.json 并 setModel 当前会话）
+  1. 主菜单（完成后回到本层；Esc 逐层返回，主菜单 Esc / 退出才关 overlay）
+       每行带一行说明；副标题显示 provider 数 / 模型数 / 当前默认模型
+       Providers        → 2
+       切换默认模型      （写入 settings.json 并 setModel 当前会话）
        新建 provider
        给已有 provider 加 API / 加模型
-       管理：备份 / 删除 provider / 删除模型 / 编辑已写入能力
-       刷新 models.dev 缓存
-       语言
+       Token 消耗
+       设置             → 语言 / 刷新 models.dev 缓存
        退出
+  1b. Providers 总入口（选中一个 provider 后）
+       模型             → 选中某个模型进入能力编辑（editDraft）
+       设为默认模型      （已限定到该 provider）
+       加 API / 模型     （已限定到该 provider）
+       刷新模型          （新增默认勾选，删除默认不勾）
+       从 /model 隐藏 / 显示（同一行切换，反映当前状态）
+       备份
+       删除模型…        （默认一个都不选）
+       ⚠ 删除 provider  （确认框默认停在「否」）
   2. 新建
        掩码 input name / apiKey
        循环添加 API（至少一条才允许去拉模型）：
@@ -482,11 +491,18 @@ pi-models/
     url.ts
     sidecar.ts
     settings.ts          # settings.json defaultProvider/defaultModel merge
+    usage.ts             # 跨 session 的 token 用量聚合（只读）
+    usage-wizard.ts      # 时间范围 → 扫描 → 表格
     paths.ts
     types.ts
     ui/
-      multi-select.ts
-      secret-input.ts
+      window.ts          # 70% overlay 边框 / 多行 subtitle / body 高度计算
+      overlay.ts         # pimCustom + BorderedLoader 包装
+      dialogs.ts         # select（结构化项 + 打字过滤）/ confirm / input / multi-select
+      pim-ui.ts          # 上述对话框的类型化门面（PimUi）
+      multi-select.ts    # 多选状态机（过滤 / 全选 / ^H 隐藏项 / Home-End-PgUp-PgDn）
+      edit-caps.ts       # 单模型能力编辑
+      usage-view.ts      # provider → 模型 两级表格 overlay
   tests/
     models-dev-map.test.ts
     match.test.ts
@@ -500,6 +516,44 @@ pi-models/
 
 开发：`pi --extension /path/to/pi-models` 或拷到 `~/.pi/agent/extensions/pi-models/`。  
 发布名注意 npm 占用（`pi-ccs` 已被占过）。
+
+## 11.1 Token 用量视图
+
+只读功能，不写 `models.json`。
+
+- 数据源：`{agentDir}/sessions/**/*.jsonl`（尊重 `PI_CODING_AGENT_DIR`）；运行时若
+  `ctx.sessionManager.getSessionDir()` 可用则优先用它（覆盖 `--session-dir` / `settings.sessionDir`）。
+  递归一层目录（pi 按 cwd 分目录），容忍损坏行。
+- 归因规则与 pi `dist/core/usage-totals.js` 的 `getUsageCostBreakdown` 完全一致：
+  - `message.role === "assistant"` → `provider/responseModel ?? model`
+  - `type === "usage"`（cache warm）→ `provider/model`
+  - `toolResult` 带 `usage` / `branch_summary` / `compaction` → `Tools/summaries`
+- 计数：`total = input + output + cacheRead + cacheWrite`；仅当四项全为 0 时回退 `totalTokens`。
+- 不展示金额（中转站 `cost` 恒为 0）。不做跨 session 去重：pi 的 responseId 只存在内存里，
+  落盘消息没有该字段；fork 会话会各自计费一次，与 pi 自身口径一致。
+- 交互：范围（all/7d/30d）→ provider 表 → `enter` 下钻模型；`←→` 换排序列（表头带 `▼`
+  标记，切列不再把光标打回顶部）；`PgUp`/`PgDn` 翻 10 行；`r` 重扫且保留排序与下钻层级；
+  `esc` 在模型层回到 provider 层，在 provider 层回到时间范围选择，再按 `esc` 才退出。
+- 终端过窄时按 `total → input → output → cacheRead → messages` 的顺序从尾部丢列，
+  并在表头下方用 `usageHiddenColumns` 明示被隐藏了哪几列（不再静默消失）。
+
+## 11.2 交互约定
+
+- 菜单项是结构化对象 `{ value, label, description?, danger? }`，分发按稳定的 `value`，
+  **不再**用本地化 label 做字符串比较（旧实现里 provider 叫 `Back`/`返回` 就会打断导航）。
+  `SelectList` 的 description 列因此得以显示：主菜单每行一句说明，provider 行显示
+  模型数 / API / 是否隐藏。
+- 所有列表支持**输入即过滤**（`SelectList.setFilter`）。单选：`esc` 先清空过滤再退出；
+  多选：`esc` 直接取消（过滤用退格 / `^U` 清）。
+- 破坏性操作：行首 `⚠`，确认框默认停在「否」（`PimConfirmOptions.danger`），
+  Yes/No 走 i18n（`answerYes` / `answerNo`）。
+- 多选：`enter` 在动作条上执行该动作而不是确认；选中 0 项时 `enter` 只提示
+  `multiSelectNothing`；`^H` 的开关状态显示在列表上方（`multiSelectHidden`）。
+- 输入框支持 `initial` 预填（光标落在末尾），所以改 `contextWindow` / `maxTokens`
+  不用重新敲一遍。
+- 副标题支持多行（`subtitleRows` / `windowChromeRows`），高度计算集中在 `ui/window.ts`，
+  不再各处重复 `floor(rows*0.7)-5`。
+- `/add-provider` 直接进入「新建 provider」，`/pim` 与 `/pim-models` 打开主菜单。
 
 ## 12. 与现有用户配置
 

@@ -1,4 +1,5 @@
 import { BorderedLoader } from "@earendil-works/pi-coding-agent";
+import { t } from "../i18n.ts";
 import { PIM_OVERLAY_OPTIONS, renderPimWindow, type ThemeLike } from "./window.ts";
 
 export type OverlayCtx = {
@@ -33,7 +34,7 @@ export function wrapInPimWindow(
   title: string,
   body: string[],
   footer: string,
-  subtitle?: string,
+  subtitle?: string | string[],
 ): (width: number) => string[] {
   return (width: number) =>
     renderPimWindow({
@@ -81,7 +82,7 @@ export async function overlayLoader<T>(
           width,
           title,
           body: inner,
-          footer: "esc back",
+          footer: t().footerLoader,
         });
       },
       handleInput: (data: string) => loader.handleInput(data),

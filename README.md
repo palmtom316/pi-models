@@ -40,10 +40,14 @@ multi-select models, and get official capability parameters — ready for `/mode
   `deepseek-v4-flash` capabilities.
 - **Layered TUI** — Esc backs out one prompt at a time (name ← API ← URL ← key).
   Submenus return to the main menu; only Esc / **Exit** on the main menu closes
-  `/pim`. Browse first, then switch the default, then create / extend / manage.
-- **Manage & view** — backup / delete a provider, delete selected models, edit
-  already-written capabilities (or reset to builtin / heuristic), browse what is
-  in `models.json` today, and switch the startup default model in `settings.json`.
+  `/pim`. Task order: browse/edit a provider, switch the default, create, extend.
+- **Type to filter** — every list accepts typed text to narrow it (relay
+  providers can return hundreds of models). Esc clears the filter first in
+  single-selects and always cancels in multi-selects.
+- **Providers hub** — one provider opens its own action menu: models (with the
+  capability editor), set default, add API, refresh, hide/show, backup, delete
+  models, delete provider. Destructive rows carry `⚠` and their confirm dialog
+  defaults to **No**.
 - **Safe writes** — lock-file guarded read-modify-write, atomic tmp+rename, mode `0600`, rotating backups,
   `modelRegistry.refresh()` with automatic rollback offer if Pi rejects the file.
 - **Bilingual UI** — English ↔ 中文, switchable in the menu, persisted.
@@ -87,20 +91,40 @@ pi --extension /absolute/path/to/pi-models
 | --- | --- |
 | `/pim` | Open the overlay menu |
 | `/pim-models` | Same |
-| `/add-provider` | Same |
+| `/add-provider` | Jump straight to **New provider**, skipping the menu |
 
-Main menu (Esc goes back one layer; Esc / **Exit** on this menu closes `/pim`):
+Main menu (Esc goes back one layer; Esc / **Exit** on this menu closes `/pim`).
+Every row carries a one-line hint, and the window subtitle shows how many
+providers/models are stored plus the current default model.
 
-1. **View** — browse existing providers and models; delete inline.
+1. **Providers** — the hub: pick a provider, then act on it (see below).
 2. **Switch default model** — pick a model from `models.json`, write it to
    `settings.json` (`defaultProvider` / `defaultModel`), and switch this session.
 3. **New provider** — name + one `api`/`baseUrl`, then loop API keys (model groups).
 4. **Add API / models** — attach another protocol/URL (or more models) to an
    existing provider.
-5. **Manage** — backup / hide or show a provider in `/model` / refresh its models / delete provider / delete models / edit capabilities.
-6. **Refresh models.dev cache** — force-fetch the latest official data.
-7. **Language** — English ↔ 中文.
-8. **Exit**
+5. **Token usage** — scan every session file and show tokens by provider → model (see below).
+6. **Settings** — language, and refreshing the models.dev cache.
+7. **Exit**
+
+### Providers hub
+
+Picking a provider opens its actions instead of a dead-end list. The provider
+row already shows model count, API type, and whether it is hidden from `/model`.
+
+| Action | What it does |
+| --- | --- |
+| **Models** | List the provider's models; Enter opens the capability editor for that model |
+| **Set as default model** | Same flow as *Switch default model*, pre-scoped to this provider |
+| **Add API / models** | Same flow as *Add API / models*, pre-scoped to this provider |
+| **Refresh models** | Fetch the catalog and diff it; additions are pre-checked, **removals are opt-in** |
+| **Hide / show in `/model`** | One toggle row that reflects the current state |
+| **Backup** | Copy this provider's block to a timestamped file |
+| **Delete models…** | Multi-select models to remove (defaults to nothing selected) |
+| **Delete provider** | Marked `⚠`; the confirm dialog defaults to **No** |
+
+All destructive dialogs are marked `⚠` and land on the safe answer, so a stray
+Enter never deletes anything.
 
 ### New provider
 
@@ -182,6 +206,32 @@ otherwise a new Claude row would inherit `thinkingFormat: "deepseek"`.
 - **View** — browse every provider and its models (`id  api  window/output`),
   jump into deletion from there.
 
+### Token usage
+
+**Token usage** sums the `usage` block of every assistant message in every session
+file pi has written, so it covers all projects and all models — not just this
+session. It never writes anything.
+
+1. Pick a range: **all time**, **last 7 days**, **last 30 days**.
+2. A table of providers appears: `total / input / output / cache / calls`,
+   sorted by total. `←` `→` re-sort by another column.
+3. `enter` drills into that provider's models; `esc` goes back to providers.
+4. `r` rescans the session files without losing the range; `esc` on the provider
+   table closes the view.
+
+Grouping follows Pi's own `getUsageCostBreakdown`:
+
+- assistant messages → `provider/responseModel ?? model`, so a relay that
+  silently swaps models (`gpt-5.6-luna` answering as `gpt-5.3`) is visible;
+- cache-warm `usage` entries → `provider/model`;
+- tool-result / branch-summary / compaction usage → the `Tools/summaries` bucket.
+
+`total = input + output + cacheRead + cacheWrite`, matching the token count Pi
+shows in `/session`. Cost is deliberately not shown: relays report `cost: 0`, so
+a money column would be fiction. Session files are read from
+`{agentDir}/sessions` (respecting `PI_CODING_AGENT_DIR`), or from the live
+session directory when pi exposes one via `--session-dir` / `sessionDir`.
+
 ### Where capabilities come from
 
 Priority order:
@@ -227,10 +277,10 @@ confirmed before their capabilities are used; `gpt-5` is never auto-upgraded to
 
 - **Automatic** — any selected id the builtin table misses triggers a models.dev
    lookup (cache-first). The sidecar records the fetch time.
-- **Manual** — menu item *Refresh models.dev cache* force-fetches
+- **Manual** — *Settings → Refresh models.dev cache* force-fetches
    `https://models.dev/api.json` regardless of TTL and reports how many official
    buckets were cached.
-- **Editable** — before writing (and afterwards via Manage → Edit capabilities)
+- **Editable** — before writing (and afterwards via Providers → *provider* → Models)
    you can change `name`, `contextWindow`, `maxTokens`, `input` (text /
    text+image), `reasoning`, and the per-level `thinkingLevelMap`
    (`off/minimal/low/medium/high/xhigh/max` → hidden, level name, `none` /
@@ -393,9 +443,13 @@ GitHub Actions runs tests and `npm publish`. The tag must be `v` plus the `packa
 - **中转 id 归一化** — `deepseek-ai/deepseek-v4-flash-0731` 这类目录 id 保持
   上游原样写入（Pi 请求时原样发回），但能力抄自官方 `deepseek-v4-flash`。
 - **逐层返回** — Esc 只退一层（名称 ← API ← URL ← key）。子菜单结束后回到主菜单，
-  只有在主菜单按 Esc / **退出** 才关闭 `/pim`。顺序是先查看，再切默认，再新建 / 追加 / 管理。
-- **管理与查看** — 备份 / 删除 provider、多选删模型、编辑已写入的能力
-  （或重置为内置 / 启发式）、浏览当前 `models.json` 内容、切换 `settings.json` 里的启动默认模型。
+  只有在主菜单按 Esc / **退出** 才关闭 `/pim`。顺序是先在 provider 里浏览/修改，
+  再切默认，再新建，最后追加。
+- **输入即过滤** — 所有列表都支持直接打字缩小范围（中转 provider 动辄几百个模型）。
+  单选列表里 Esc 先清空过滤再退出；多选列表里 Esc 直接取消。
+- **Providers 总入口** — 选中一个 provider 就进入它自己的操作菜单：模型（含能力编辑）、
+  设为默认、加 API、刷新、隐藏/显示、备份、删模型、删 provider。破坏性操作行带 `⚠`，
+  确认框默认停在 **否**。
 - **安全写入** — 锁内重读后再合并、原子 tmp+rename、权限 `0600`、滚动备份、写后
   `modelRegistry.refresh()`，Pi 拒绝时一键回滚。
 - **中英双语界面** — 菜单一键切换，持久保存。
@@ -438,19 +492,37 @@ pi --extension /absolute/path/to/pi-models
 | --- | --- |
 | `/pim` | 打开 overlay 菜单 |
 | `/pim-models` | 同上 |
-| `/add-provider` | 同上 |
+| `/add-provider` | 直接进入「新建 provider」，跳过菜单 |
 
-主菜单（Esc 逐层返回；在本层按 Esc / **退出** 才关闭 `/pim`）：
+主菜单（Esc 逐层返回；在本层按 Esc / **退出** 才关闭 `/pim`）。
+每行都带一行说明，窗口副标题显示已存 provider / 模型数量与当前默认模型。
 
-1. **查看** — 浏览已有 provider 与模型，可直接删除。
+1. **Providers** — 总入口：先选 provider，再对它操作（见下）。
 2. **切换默认模型** — 从 `models.json` 选一个模型，写入 `settings.json`
    （`defaultProvider` / `defaultModel`），并切换当前会话。
 3. **新建 provider** — 名称 + 一条 `api`/`baseUrl`，然后循环输入 API key（模型分组）。
 4. **给已有 provider 加 API / 模型** — 在现有 provider 上追加协议/URL 或更多模型。
-5. **管理** — 备份 / 从 `/model` 隐藏或重新显示 provider / 刷新模型 / 删除 provider / 删除模型 / 编辑能力。
-6. **刷新 models.dev 缓存** — 强制拉取最新官方数据。
-7. **语言** — English ↔ 中文。
-8. **退出**
+5. **Token 消耗** — 扫描全部 session 文件，按 provider → 模型统计 token（见下）。
+6. **设置** — 语言，以及刷新 models.dev 缓存。
+7. **退出**
+
+### Providers 总入口
+
+选中一个 provider 会直接打开它的操作菜单，而不是一个只能看的死列表。
+列表行本身就显示模型数量、API 类型，以及是否已从 `/model` 隐藏。
+
+| 操作 | 作用 |
+| --- | --- |
+| **模型** | 列出该 provider 的模型；回车进入该模型的能力编辑 |
+| **设为默认模型** | 与「切换默认模型」相同，但已限定到该 provider |
+| **加 API / 模型** | 与「加 API / 模型」相同，但已限定到该 provider |
+| **刷新模型** | 拉取目录并做差集；新增项默认勾选，**删除项默认不勾** |
+| **从 `/model` 隐藏 / 显示** | 同一行切换，直接反映当前状态 |
+| **备份** | 把该 provider 的配置块复制到带时间戳的文件 |
+| **删除模型…** | 多选要删的模型（默认一个都不选） |
+| **删除 provider** | 带 `⚠` 标记；确认框默认停在 **否** |
+
+所有破坏性对话框都带 `⚠`，且默认落在安全选项上，误按回车不会删数据。
 
 ### 新建 provider
 
@@ -516,6 +588,29 @@ provider 上移除 —— 否则新加的 Claude 行会继承 `thinkingFormat: "
 - **查看** — 浏览每个 provider 及其模型（`id  api  窗口/输出`），可从那里
   直接进入删除。
 
+### Token 消耗
+
+**Token 消耗** 会把 pi 写过的所有 session 文件里 assistant 消息的 `usage` 累加起来，
+因此覆盖全部项目、全部模型 —— 不只是当前会话。只读，不写任何文件。
+
+1. 选范围：**全部** / **最近 7 天** / **最近 30 天**。
+2. 出现 provider 表格：`总计 / 输入 / 输出 / 缓存 / 次数`，默认按总计排序；
+   `←` `→` 切换排序列。
+3. `enter` 下钻到该 provider 的模型，`esc` 回到 provider 层。
+4. `r` 重扫 session 文件（保持当前范围）；在 provider 表格按 `esc` 关闭视图。
+
+分组口径与 pi 自带的 `getUsageCostBreakdown` 一致：
+
+- assistant 消息 → `provider/responseModel ?? model`，所以中转偷换模型
+  （`gpt-5.6-luna` 实际回 `gpt-5.3`）也能看出来；
+- cache-warm 的 `usage` 条目 → `provider/model`；
+- tool result / branch summary / compaction 的用量 → `Tools/summaries` 桶。
+
+`总计 = 输入 + 输出 + 缓存读 + 缓存写`，与 `/session` 显示的 token 数一致。
+**不显示金额**：中转站基本都报 `cost: 0`，算了也是假的。session 文件取自
+`{agentDir}/sessions`（尊重 `PI_CODING_AGENT_DIR`）；当 pi 通过 `--session-dir` /
+`sessionDir` 指定了别的目录时，用运行时那个。
+
 ### 能力参数来源
 
 优先级顺序：
@@ -556,7 +651,7 @@ deepseek 启发式兜底改成 text+image(只有 `deepseek-v4-pro` 保持纯文�
 
 - **自动** — 勾选了内置表没有的 id 时自动查 models.dev（缓存优先），sidecar
   记录拉取时间。
-- **手动** — 菜单「刷新 models.dev 缓存」无视 TTL 强制拉取
+- **手动** — 「设置 → 刷新 models.dev 缓存」无视 TTL 强制拉取
   `https://models.dev/api.json`，并汇报缓存到的官方桶数量。
 - **可修改** — 写入前（以及之后在 管理 → 编辑能力 里）可以改 `name`、
   `contextWindow`、`maxTokens`、`input`（纯文本 / 文本+图片）、`reasoning`、
