@@ -407,7 +407,12 @@ There is **no long-lived npm token and no local `npm login`** — `npm publish` 
 fail with `ENEEDAUTH`, and that is expected. (npm also requires 2FA for interactive publishing, and
 bypass-2FA granular tokens lose direct-publish rights in January 2027, so CI is the only durable path.)
 
-One-time setup, if the trusted publisher is ever removed:
+> **Status: the trusted publisher is not configured yet.** Until it is, `publish.yml` falls back to
+> the `NPM_TOKEN` repository secret, which still works today but is on the npm deprecation path.
+> Finish the one-time setup below, then delete that secret (`gh secret delete NPM_TOKEN`) so the
+> fallback can never mask an OIDC misconfiguration.
+
+One-time setup:
 
 1. Open [package settings](https://www.npmjs.com/package/@palmtom/pi-models) → **Trusted Publisher**.
 2. GitHub Actions: user `palmtom316`, repo `pi-models`, workflow filename `publish.yml` (filename only, not a path).
@@ -424,9 +429,7 @@ npm run release 0.5.0 --dry   # preview without changing anything
 ```
 
 It bumps `package.json` + `package-lock.json`, runs the tests, commits, tags `v<version>`, and pushes
-both. GitHub Actions verifies the tag matches `package.json`, re-runs the tests, and publishes over
-OIDC. If OIDC is misconfigured the workflow fails loudly with the checklist rather than falling back
-to a token.
+both. GitHub Actions verifies the tag matches `package.json`, re-runs the tests, and publishes to npm.
 
 ---
 
@@ -778,7 +781,11 @@ pi install git:github.com/palmtom316/pi-models
 （npm 现在对交互式发布强制 2FA，而 bypass-2FA 的 granular token 从 2027 年 1 月起失去直接发布能力，
 所以走 CI 是唯一可持续的方式。）
 
-万一 Trusted Publisher 配置丢了，重新配一次：
+> **当前状态：Trusted Publisher 还没配。** 在配好之前，`publish.yml` 会退回用仓库 secret
+> `NPM_TOKEN` 发布 —— 现在还能用，但已经在 npm 的弃用路径上。按下面配完之后，把那个 secret 删掉
+> （`gh secret delete NPM_TOKEN`），这样 OIDC 配错时不会再被 fallback 掩盖。
+
+一次性配置：
 
 1. 打开 [包设置](https://www.npmjs.com/package/@palmtom/pi-models) → **Trusted Publisher**。
 2. GitHub Actions：用户 `palmtom316`，仓库 `pi-models`，workflow 文件名 `publish.yml`（只要文件名，不要路径）。
@@ -795,8 +802,7 @@ npm run release 0.5.0 --dry   # 只看会做什么，不改任何东西
 ```
 
 它会改 `package.json` 和 `package-lock.json` 的版本号、跑测试、提交、打 `v<版本>` tag，然后把
-commit 和 tag 一起推上去。GitHub Actions 会校验 tag 与 `package.json` 一致、再跑一次测试，最后用
-OIDC 发布。OIDC 配错时 workflow 会直接失败并打印配置清单，不会退回 token。
+commit 和 tag 一起推上去。GitHub Actions 会校验 tag 与 `package.json` 一致、再跑一次测试，最后发布到 npm。
 
 ## License
 
