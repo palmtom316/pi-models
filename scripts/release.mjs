@@ -6,8 +6,9 @@
  *   npm run release minor          # patch | minor | major
  *   npm run release 0.5.0 --dry    # show what would happen
  *
- * Pushing the `v<version>` tag is what triggers .github/workflows/publish.yml,
- * which publishes to npm over OIDC. Never run `npm publish` locally.
+ * Pushing the `v<version>` tag triggers .github/workflows/publish.yml, which
+ * publishes to npm from CI. Never run `npm publish` locally: npm requires 2FA
+ * for interactive publishing and this repo keeps no local npm credentials.
  */
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
