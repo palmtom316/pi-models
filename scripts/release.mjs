@@ -4,10 +4,11 @@
  *
  *   npm run release 0.5.0            # explicit version
  *   npm run release minor            # patch | minor | major
- *   npm run release 0.5.0 --preview  # show what would happen, change nothing
+ *   npm run release -- 0.5.0 --preview   # show what would happen, change nothing
  *
- * Use --preview, not --dry: npm swallows --dry/--dry-run as its own config
- * flags, so they never reach this script.
+ * The `--` matters: without it npm eats --preview/--dry/--dry-run as its own
+ * config flags and they never reach this script. A bare `preview` word works
+ * too, with or without `--`.
  *
  * Pushing the `v<version>` tag triggers .github/workflows/publish.yml, which
  * publishes to npm from CI. Never run `npm publish` locally: npm requires 2FA
@@ -23,11 +24,12 @@ const args = process.argv.slice(2);
 // npm consumes --dry/--dry-run itself, so --preview is the forwarded flag.
 // npm_config_dry_run catches `npm run release --dry-run` anyway.
 const dry =
+  args.includes("preview") ||
   args.includes("--preview") ||
   args.includes("--dry") ||
   args.includes("--dry-run") ||
   process.env.npm_config_dry_run === "true";
-const wanted = args.filter((a) => !a.startsWith("-"))[0];
+const wanted = args.filter((a) => !a.startsWith("-") && a !== "preview")[0];
 
 function run(cmd, cmdArgs, opts = {}) {
   const out = execFileSync(cmd, cmdArgs, { cwd: root, encoding: "utf8", ...opts });
@@ -40,7 +42,7 @@ function fail(message) {
   process.exit(1);
 }
 
-if (!wanted) fail("usage: npm run release <x.y.z|patch|minor|major> [--preview]");
+if (!wanted) fail("usage: npm run release -- <x.y.z|patch|minor|major> [--preview]");
 
 const pkgPath = join(root, "package.json");
 const lockPath = join(root, "package-lock.json");
