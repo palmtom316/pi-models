@@ -35,7 +35,8 @@
     ]
   },
   "scripts": {
-    "test": "node --experimental-strip-types --test tests/*.test.ts"
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "release": "node scripts/release.mjs"
   },
   "engines": {
     "node": ">=22.19.0"

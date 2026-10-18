@@ -401,9 +401,13 @@ Skip npm entirely if you only need the extension locally:
 pi install git:github.com/palmtom316/pi-models
 ```
 
-For [pi.dev/packages](https://pi.dev/packages) the package must be on npm. This repo uses
-[trusted publishing](https://docs.npmjs.com/trusted-publishers) — no local `npm login`,
-OTP, or long-lived token. One-time setup:
+For [pi.dev/packages](https://pi.dev/packages) the package must be on npm. Publishing happens
+only in CI, via npm [trusted publishing](https://docs.npmjs.com/trusted-publishers) (OIDC).
+There is **no long-lived npm token and no local `npm login`** — `npm publish` on your machine will
+fail with `ENEEDAUTH`, and that is expected. (npm also requires 2FA for interactive publishing, and
+bypass-2FA granular tokens lose direct-publish rights in January 2027, so CI is the only durable path.)
+
+One-time setup, if the trusted publisher is ever removed:
 
 1. Open [package settings](https://www.npmjs.com/package/@palmtom/pi-models) → **Trusted Publisher**.
 2. GitHub Actions: user `palmtom316`, repo `pi-models`, workflow filename `publish.yml` (filename only, not a path).
@@ -412,16 +416,17 @@ OTP, or long-lived token. One-time setup:
 
 A mismatch (wrong owner/repo/filename/environment) shows up as `E404` on publish, not as an auth error.
 
-After that, a release is just a version bump + tag:
+Then a release is one command:
 
 ```sh
-# edit package.json version, then:
-git add package.json && git commit -m "Bump version to x.y.z"
-git tag vx.y.z
-git push && git push origin vx.y.z
+npm run release patch     # or minor / major, or an explicit version like 0.5.0
+npm run release 0.5.0 --dry   # preview without changing anything
 ```
 
-GitHub Actions runs tests and `npm publish`. The tag must be `v` plus the `package.json` version.
+It bumps `package.json` + `package-lock.json`, runs the tests, commits, tags `v<version>`, and pushes
+both. GitHub Actions verifies the tag matches `package.json`, re-runs the tests, and publishes over
+OIDC. If OIDC is misconfigured the workflow fails loudly with the checklist rather than falling back
+to a token.
 
 ---
 
@@ -766,8 +771,14 @@ npm test          # Node ≥ 22.19.0，--experimental-strip-types
 pi install git:github.com/palmtom316/pi-models
 ```
 
-要上 [pi.dev/packages](https://pi.dev/packages) 必须发到 npm。本仓库用
-[Trusted Publishing](https://docs.npmjs.com/trusted-publishers)，本地不再 `npm login` / OTP / token。一次性配置：
+要上 [pi.dev/packages](https://pi.dev/packages) 必须发到 npm。发布**只在 CI 里做**，走 npm
+[Trusted Publishing](https://docs.npmjs.com/trusted-publishers)（OIDC）：仓库里没有长期 token，
+本地也不用 `npm login`。在本地跑 `npm publish` 会报 `ENEEDAUTH`，这是正常的。
+
+（npm 现在对交互式发布强制 2FA，而 bypass-2FA 的 granular token 从 2027 年 1 月起失去直接发布能力，
+所以走 CI 是唯一可持续的方式。）
+
+万一 Trusted Publisher 配置丢了，重新配一次：
 
 1. 打开 [包设置](https://www.npmjs.com/package/@palmtom/pi-models) → **Trusted Publisher**。
 2. GitHub Actions：用户 `palmtom316`，仓库 `pi-models`，workflow 文件名 `publish.yml`（只要文件名，不要路径）。
@@ -776,16 +787,16 @@ pi install git:github.com/palmtom316/pi-models
 
 配置对不上（用户名 / 仓库 / 文件名 / Environment）时，发布会报 `E404`，看起来像包不存在。
 
-之后发布只要改版本号 + 打 tag：
+之后发布就一条命令：
 
 ```sh
-# 改 package.json version 后：
-git add package.json && git commit -m "Bump version to x.y.z"
-git tag vx.y.z
-git push && git push origin vx.y.z
+npm run release patch     # 也可以 minor / major，或直接写版本号 0.5.0
+npm run release 0.5.0 --dry   # 只看会做什么，不改任何东西
 ```
 
-GitHub Actions 会跑测试并 `npm publish`。tag 必须是 `v` 加上 `package.json` 的版本号。
+它会改 `package.json` 和 `package-lock.json` 的版本号、跑测试、提交、打 `v<版本>` tag，然后把
+commit 和 tag 一起推上去。GitHub Actions 会校验 tag 与 `package.json` 一致、再跑一次测试，最后用
+OIDC 发布。OIDC 配错时 workflow 会直接失败并打印配置清单，不会退回 token。
 
 ## License
 
