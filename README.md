@@ -143,8 +143,9 @@ Enter never deletes anything.
 
    Relays almost always serve Claude / Gemini over `openai-completions`; pick a
    native API only when the site actually exposes it.
-3. **baseUrl** — HTTPS required (HTTP only for localhost / `127.0.0.1` / `::1`).
-   Query strings, hash fragments, and URL userinfo are stripped / rejected.
+3. **baseUrl** — HTTPS required, except plain HTTP for loopback and private/LAN
+   hosts (RFC1918, link-local, Tailscale `100.64/10`, `.local` / `.lan` / `.internal`,
+   IPv6 ULA). Query strings, hash fragments, and URL userinfo are stripped / rejected.
 4. **`User-Agent: node`** — optional, on by default (many WAFs block `OpenAI/JS`).
 5. **API key** (masked input) → fetch catalog → multi-select. Official matches are
    pre-checked; embeddings / TTS / image / video / realtime models are folded
@@ -548,7 +549,8 @@ pi --extension /absolute/path/to/pi-models
 
    中转站的 Claude / Gemini 几乎都走 `openai-completions`；只有站点真的提供
    原生端点时才选原生 API。
-3. **baseUrl** — 必须 HTTPS（HTTP 仅允许 localhost / `127.0.0.1` / `::1`）。
+3. **baseUrl** — 必须 HTTPS;仅回环与私网地址允许明文 HTTP(RFC1918、link-local、
+   Tailscale `100.64/10`、`.local` / `.lan` / `.internal`、IPv6 ULA)。
    query、hash、userinfo 会被去掉或拒绝。
 4. **`User-Agent: node`** — 可选，默认开启（很多 WAF 拦 `OpenAI/JS`）。
 5. **API key**（掩码输入）→ 拉目录 → 多选。官方匹配项预勾选；embedding /
